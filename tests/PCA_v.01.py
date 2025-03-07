@@ -96,17 +96,17 @@ def detect_cycle_bounds(trajectory, signals):
         )
         nb_neighbours_l.append(nb_neighbours)
 
-        threshold = 2
+    threshold = 2
     peaks = []
     while len(peaks) == 0:
         peaks = find_peaks(nb_neighbours_l, prominence=WINDOW_DETECTION / threshold)[0]
         threshold *= 2
 
-        widths, _, _, right_ips = peak_widths(nb_neighbours_l, peaks, rel_height=0.5)
+    widths, _, _, right_ips = peak_widths(nb_neighbours_l, peaks, rel_height=0.5)
     right_ips = right_ips.astype(int)
 
-    print(peaks)
-    print(threshold)
+    print(peaks)#
+    print(threshold)#
 
     end_index = peaks[0]
     peak_ind = 0
@@ -124,8 +124,6 @@ def detect_cycle_bounds(trajectory, signals):
         end_index = i_list[right_ips[peak_ind]]
     else:
         raise ValueError(f"Invalid peak index {peak_ind} for right_ips of size {len(right_ips)}")
-    nb_neighbours_l = np.array(nb_neighbours_l)
-    peaks = np.array(peaks, dtype=int)
 
     return start_index, end_index
 
@@ -175,7 +173,7 @@ if __name__ == "__main__":
             print(f"Using manually set cycle bounds: {indices}")
         else:
             indices = detect_cycle_bounds(X_pca, smoothed_signals)
-            np.savetxt(output_path + "_phase_indices.txt", indices, fmt="%i", delimiter=";")
+        np.savetxt(output_path + "_phase_indices.txt", indices, fmt="%i", delimiter=";")
 
                 # Plot detected cycle
         plot_pca_cycle(X_pca, indices[0], indices[1])
