@@ -13,3 +13,6 @@ Issue with timestamp
 fix plotting then try again
 
 feedback to martin? distance threshold and plotting and use traj instead of signal in cycle detection?
+
+for gui allow for indices input
+and maybe mannual input of indices within dataset while updating traj to not only account for drifts but just change in traj
