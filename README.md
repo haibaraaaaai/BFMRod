@@ -8,11 +8,15 @@ Test data
 
 Issue with long files>>
 
-Issue with timestamp
-
-fix plotting then try again
 
 feedback to martin? distance threshold and plotting and use traj instead of signal in cycle detection?
 
 for gui allow for indices input
 and maybe mannual input of indices within dataset while updating traj to not only account for drifts but just change in traj
+
+
+update is currently only useful for when there's a drift but not traj change, how about some sort of tree that if the data stray too far we check for another traj?
+
+animation?
+
+Alternatively we can look to redo the reference cycle in case the trajectory has changed into something different by something that's not drift so can't be corrected with a simple update. Maybe we can just do a new reference cycle every minute instead of doing the update (and new ref cycle should handle drift anyway?) or we can use the tree again, if when the tree cannot find any neighbor for the current cycle maybe that's time to switch.  OR we can just wait for gui then we can monitor the change in trajectory and how it matches the reference cycle and mannually make changes when necessary?
