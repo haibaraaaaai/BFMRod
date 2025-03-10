@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from scipy.signal import decimate, savgol_filter
 
 # Define constants
-PHASE_FILE = "results/2025.02.23 ox/file1_0_1_phase.npy"  # Path to saved phase data
+PHASE_FILE = "results/2025.02.23 ox/file1_0_60_phase.npy"  # Path to saved phase data
 SAMPLING_RATE = 1 / 250000  # 250 kHz = 1/250000 seconds per sample
 
 # Data processing parameters
