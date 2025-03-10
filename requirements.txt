@@ -1,0 +1,7 @@
+PyQt6
+nptdms
+numpy
+matplotlib
+scipy
+scikit-learn
+numba
