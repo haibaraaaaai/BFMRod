@@ -5,3 +5,4 @@ matplotlib
 scipy
 scikit-learn
 numba
+pyqt6-tools ## for Qt Designer
