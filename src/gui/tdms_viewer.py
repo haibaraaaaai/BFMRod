@@ -1,14 +1,17 @@
+import numpy as np
 from PyQt6.QtWidgets import (
-    QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QSlider, QCheckBox, 
+    QMainWindow, QLabel, QVBoxLayout, QHBoxLayout, QWidget, QSlider, QCheckBox,
     QLineEdit, QPushButton
 )
 from PyQt6.QtCore import Qt
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib import ticker
+from PyQt6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
+from PyQt6.QtGui import QPainter, QShortcut, QKeySequence
+
 from scipy.signal import decimate
-from processing.tdms_loader import load_tdms_data
+from config import SAMPLING_RATE
+from processing import load_tdms_data, apply_pca
+from utils import smooth_data_with_convolution
+from gui.pca_3d_viewer import PCA3DViewer
 
 
 class TDMSViewer(QMainWindow):
@@ -18,95 +21,88 @@ class TDMSViewer(QMainWindow):
         self.setWindowTitle(f"Viewing: {file_path.split('/')[-1]}")
         self.setGeometry(100, 100, 1000, 600)
 
-        # Load TDMS file data
-        self.file_path = file_path
         self.timestamps, self.data, self.channel_names = load_tdms_data(file_path)
-
         if self.timestamps is None:
             self.close()
             return
 
-        # Default parameters
+        # --- Parameters ---
         self.window_size = 10000
         self.start_index = 0
         self.decimation_factor = 100
-        self.window_step_fraction = 0.1  # Move 1/10th of window size
-        self.min_window_size = 1000  # Smallest allowable window
+        self.window_step_fraction = 0.1
+        self.min_window_size = 1000
 
-        # --- Create Main Layout ---
+        # --- Layout ---
         self.central_widget = QWidget()
         self.final_layout = QVBoxLayout(self.central_widget)
-
-        # --- Create Top Section (Plot + Controls) ---
         self.top_layout = QHBoxLayout()
 
-        # --- Create Plot Area ---
-        self.figure, self.ax = plt.subplots(figsize=(6, 4), dpi=100)
-        self.canvas = FigureCanvas(self.figure)
-        self.top_layout.addWidget(self.canvas)
+        # --- Chart ---
+        self.chart = QChart()
+        self.chart.setTitle("TDMS Data Viewer")
+        self.chart_view = QChartView(self.chart)
+        self.chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.top_layout.addWidget(self.chart_view)
 
-        # --- Create Control Panel ---
+        self.axis_x = QValueAxis()
+        self.axis_y = QValueAxis()
+        self.chart.addAxis(self.axis_x, Qt.AlignmentFlag.AlignBottom)
+        self.chart.addAxis(self.axis_y, Qt.AlignmentFlag.AlignLeft)
+        self.series_list = []
+
+        # --- Control Panel ---
         self.control_panel = QVBoxLayout()
-
-        # ✅ Checkboxes for channel selection
         self.checkboxes = []
         for name in self.channel_names:
             checkbox = QCheckBox(name, self)
-            checkbox.setChecked(True)  # Default: Checked (All channels displayed)
+            checkbox.setChecked(True)
             checkbox.stateChanged.connect(self.update_window)
             self.control_panel.addWidget(checkbox)
             self.checkboxes.append(checkbox)
 
-        # ✅ Manual Input for Start/End Time
-        self.start_time_layout = QHBoxLayout()
-
         self.start_time_input = QLineEdit()
         self.start_time_input.setPlaceholderText("Start Time (s)")
         self.start_time_input.setFixedWidth(100)
-        self.start_time_input.setFocusPolicy(Qt.FocusPolicy.ClickFocus)  # Disable focus capture
-        self.start_time_layout.addWidget(QLabel("Start:"))  # Add label
-        self.start_time_layout.addWidget(self.start_time_input)
-
-        self.start_time_min_label = QLabel(f"(Min: {self.timestamps[0]:.3f}s)")
-        self.start_time_layout.addWidget(self.start_time_min_label)
-
-        self.control_panel.addLayout(self.start_time_layout)
-
-        self.end_time_layout = QHBoxLayout()
+        self.control_panel.addWidget(self.start_time_input)
 
         self.end_time_input = QLineEdit()
         self.end_time_input.setPlaceholderText("End Time (s)")
         self.end_time_input.setFixedWidth(100)
-        self.end_time_input.setFocusPolicy(Qt.FocusPolicy.ClickFocus)  # Disable focus capture
-        self.end_time_layout.addWidget(QLabel("End:"))  # Add label
-        self.end_time_layout.addWidget(self.end_time_input)
+        self.control_panel.addWidget(self.end_time_input)
 
-        self.end_time_max_label = QLabel(f"(Max: {self.timestamps[-1]:.3f}s)")
-        self.end_time_layout.addWidget(self.end_time_max_label)
+        self.time_range_label = QLabel(f"Min: {self.timestamps[0]:.3f}s / Max: {self.timestamps[-1]:.3f}s")
+        self.control_panel.addWidget(self.time_range_label)
 
-        self.control_panel.addLayout(self.end_time_layout)
-
-        # ✅ Apply Button for Manual Input
-        self.apply_button = QPushButton("Apply", self)
+        self.apply_button = QPushButton("Apply")
         self.apply_button.clicked.connect(self.apply_manual_window)
         self.control_panel.addWidget(self.apply_button)
 
-        # --- PCA Analysis Section ---
-        self.pca_layout = QHBoxLayout()
-
-        self.pca_start_input = QLineEdit(self)
+        # --- PCA Inputs ---
+        self.pca_start_input = QLineEdit()
         self.pca_start_input.setPlaceholderText("PCA Start Time (s)")
         self.pca_start_input.setFixedWidth(120)
-        self.pca_layout.addWidget(self.pca_start_input)
+        self.pca_start_input.setText(f"{self.timestamps[0]:.3f}")
+        self.control_panel.addWidget(self.pca_start_input)
 
-        self.pca_button = QPushButton("Run PCA", self)
+        self.pca_end_input = QLineEdit()
+        self.pca_end_input.setPlaceholderText("PCA End Time (s)")
+        self.pca_end_input.setFixedWidth(120)
+        self.pca_end_input.setText(f"{self.timestamps[-1]:.3f}")
+        self.control_panel.addWidget(self.pca_end_input)
+
+        self.segment_size_input = QLineEdit()
+        self.segment_size_input.setPlaceholderText("Segment Size (s)")
+        self.segment_size_input.setFixedWidth(120)
+        self.segment_size_input.setText("0.01")
+        self.control_panel.addWidget(self.segment_size_input)
+
+        self.pca_button = QPushButton("Run PCA")
         self.pca_button.clicked.connect(self.run_pca_analysis)
-        self.pca_layout.addWidget(self.pca_button)
+        self.control_panel.addWidget(self.pca_button)
 
-        self.final_layout.addLayout(self.pca_layout)
-
-        # ✅ Tooltip for Error Messages
-        self.error_label = QLabel("", self)
+        # --- Error Display ---
+        self.error_label = QLabel("")
         self.error_label.setStyleSheet("color: red; font-size: 10px;")
         self.error_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         self.control_panel.addWidget(self.error_label)
@@ -114,8 +110,8 @@ class TDMSViewer(QMainWindow):
         self.top_layout.addLayout(self.control_panel)
         self.final_layout.addLayout(self.top_layout)
 
-        # --- Slider for Time Navigation ---
-        self.slider = QSlider(Qt.Orientation.Horizontal, self)
+        # --- Slider ---
+        self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setMinimum(0)
         self.slider.setMaximum(len(self.timestamps) - self.window_size)
         self.slider.setValue(self.start_index)
@@ -127,72 +123,61 @@ class TDMSViewer(QMainWindow):
         self.setCentralWidget(self.central_widget)
 
         self.update_window()
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.setFocus()
+
+        # --- Keyboard Shortcuts ---
+        QShortcut(QKeySequence(Qt.Key.Key_Left), self).activated.connect(self.move_window_left)
+        QShortcut(QKeySequence(Qt.Key.Key_Right), self).activated.connect(self.move_window_right)
+        QShortcut(QKeySequence(Qt.Key.Key_Up), self).activated.connect(self.increase_window_size)
+        QShortcut(QKeySequence(Qt.Key.Key_Down), self).activated.connect(self.decrease_window_size)
 
     def update_window(self):
-        """Updates the displayed TDMS data based on the current window position."""
         self.start_index = self.slider.value()
         end_index = min(self.start_index + self.window_size, len(self.timestamps))
 
         time_window = self.timestamps[self.start_index:end_index]
         selected_channels = [i for i, cb in enumerate(self.checkboxes) if cb.isChecked()]
 
-        # Decimate and Plot
-        self.ax.clear()
+        self.chart.removeAllSeries()
+        self.series_list.clear()
+
+        all_data = []
         for i in selected_channels:
             data_dec = decimate(self.data[self.start_index:end_index, i], self.decimation_factor)
             time_dec = np.linspace(time_window[0], time_window[-1], len(data_dec))
-            self.ax.plot(time_dec, data_dec, label=self.channel_names[i])
 
-        self.ax.set_xlabel("Time (s)")
-        self.ax.set_ylabel("Amplitude")
-        self.ax.set_title("TDMS Data Viewer")
+            series = QLineSeries()
+            series.setUseOpenGL(True)
+            for t, val in zip(time_dec, data_dec):
+                series.append(t, val)
 
-        if selected_channels:
-            self.ax.legend()
-        self.ax.grid(True)
+            series.setName(self.channel_names[i])
+            self.chart.addSeries(series)
+            series.attachAxis(self.axis_x)
+            series.attachAxis(self.axis_y)
+            self.series_list.append(series)
+            all_data.append(data_dec)
 
-        # ✅ Ensure Correct Formatting of Axis Labels
-        self.ax.xaxis.set_major_formatter(ticker.FormatStrFormatter("%.3f"))
+        if all_data:
+            flat_data = np.concatenate(all_data)
+            self.axis_x.setRange(time_window[0], time_window[-1])
+            self.axis_y.setRange(float(np.min(flat_data)), float(np.max(flat_data)))
 
-        # ✅ Update Start/End Time Fields in GUI
-        self.start_time_input.setText(f"{self.timestamps[self.start_index]:.3f}")
-        self.end_time_input.setText(f"{self.timestamps[end_index-1]:.3f}")
-
-        self.canvas.draw()
-
-    def keyPressEvent(self, event):
-        """Handles keyboard shortcuts for navigation and window resizing."""
-        key = event.key()
-        step_size = int(self.window_size * self.window_step_fraction)
-
-        if key == Qt.Key.Key_Left:
-            self.slider.setValue(max(0, self.start_index - step_size))
-
-        elif key == Qt.Key.Key_Right:
-            self.slider.setValue(min(len(self.timestamps) - self.window_size, self.start_index + step_size))
-
-        elif key == Qt.Key.Key_Up:  # Increase window size
-            self.window_size = min(len(self.timestamps), self.window_size + self.min_window_size)
-            self.slider.setMaximum(len(self.timestamps) - self.window_size)
-            self.update_window()
-
-        elif key == Qt.Key.Key_Down:  # Decrease window size
-            self.window_size = max(self.min_window_size, self.window_size - self.min_window_size)
-            self.slider.setMaximum(len(self.timestamps) - self.window_size)
-            self.update_window()
+        self.start_time_input.setText(f"{time_window[0]:.3f}")
+        self.end_time_input.setText(f"{time_window[-1]:.3f}")
 
     def apply_manual_window(self):
-        """Manually sets start and end time based on user input."""
         try:
             start_time = float(self.start_time_input.text())
             end_time = float(self.end_time_input.text())
 
+            if start_time < self.timestamps[0] or end_time > self.timestamps[-1]:
+                self.error_label.setText("⚠ Time out of range.")
+                return
+
             start_index = np.searchsorted(self.timestamps, start_time)
             end_index = np.searchsorted(self.timestamps, end_time)
 
-            if start_index >= end_index or end_index > len(self.timestamps):
+            if start_index >= end_index:
                 self.error_label.setText("⚠ Invalid time range.")
                 return
 
@@ -200,16 +185,74 @@ class TDMSViewer(QMainWindow):
             self.window_size = end_index - start_index
             self.slider.setValue(self.start_index)
             self.slider.setMaximum(len(self.timestamps) - self.window_size)
-
             self.update_window()
             self.error_label.setText("")
         except ValueError:
-            self.error_label.setText("⚠ Enter valid numbers.")
+            self.error_label.setText("⚠ Invalid number input.")
 
     def run_pca_analysis(self):
-        """Placeholder for running PCA analysis."""
         try:
             pca_start_time = float(self.pca_start_input.text())
-            print(f"Starting PCA analysis from {pca_start_time}s")
+            pca_end_time = float(self.pca_end_input.text())
+            segment_duration = float(self.segment_size_input.text())
+
+            if pca_start_time < self.timestamps[0] or pca_end_time > self.timestamps[-1]:
+                self.error_label.setText("⚠ PCA time range out of bounds.")
+                return
+
+            segment_size = int(segment_duration * SAMPLING_RATE)
+            start_idx = np.searchsorted(self.timestamps, pca_start_time)
+            end_idx = np.searchsorted(self.timestamps, pca_end_time)
+
+            if start_idx >= end_idx:
+                self.error_label.setText("⚠ Invalid PCA time range.")
+                return
+
+            total_samples = end_idx - start_idx
+            expected_segments = total_samples // segment_size
+
+            if total_samples < segment_size:
+                self.error_label.setText("⚠ Not enough data for PCA.")
+                return
+
+            raw_signals = self.data[start_idx:end_idx, :]
+            smoothed = smooth_data_with_convolution(raw_signals)
+
+            segments = []
+            for i in range(expected_segments):
+                seg_start = i * segment_size
+                seg_end = seg_start + segment_size
+                seg = smoothed[seg_start:seg_end]
+                X_pca = apply_pca(seg)
+                seg_start_time = self.timestamps[start_idx + seg_start]
+                seg_end_time = self.timestamps[start_idx + seg_end - 1]
+                segments.append((X_pca, seg_start_time, seg_end_time))
+
+            if segments:
+                self.error_label.setText("")
+                self.pca_viewer = PCA3DViewer(segments)
+                self.pca_viewer.show()
+
         except ValueError:
-            print("⚠ Invalid PCA start time entered.")
+            self.error_label.setText("⚠ Invalid PCA input.")
+        except Exception as e:
+            self.error_label.setText(f"⚠ PCA error: {e}")
+
+    # --- Navigation Shortcuts ---
+    def move_window_left(self):
+        step_size = int(self.window_size * self.window_step_fraction)
+        self.slider.setValue(max(0, self.start_index - step_size))
+
+    def move_window_right(self):
+        step_size = int(self.window_size * self.window_step_fraction)
+        self.slider.setValue(min(len(self.timestamps) - self.window_size, self.start_index + step_size))
+
+    def increase_window_size(self):
+        self.window_size = min(len(self.timestamps), self.window_size + self.min_window_size)
+        self.slider.setMaximum(len(self.timestamps) - self.window_size)
+        self.update_window()
+
+    def decrease_window_size(self):
+        self.window_size = max(self.min_window_size, self.window_size - self.min_window_size)
+        self.slider.setMaximum(len(self.timestamps) - self.window_size)
+        self.update_window()
