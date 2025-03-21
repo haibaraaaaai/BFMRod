@@ -28,3 +28,33 @@ Cache everything in memory once computed (raw, smoothed, PCA, ref cycles, segmen
 Show timeline of ref cycle evolution: user could even scroll to compare any two segments & their assigned ref cycles.
 Later on: allow real-time PCA updates or ref cycle re-calculation with different parameters (e.g., smoothing factor).
 Add color-coded drift metric between segment’s PCA and assigned ref cycle.
+
+
+
+Resolve .3f issue with tolorance?
+
+4. Detect reference cycle with detect_cycle_bounds
+	•	✔ Critical step — this must be before any updates.
+	•	This uses first part of PCA data; just make sure enough points exist before updates kick in.
+
+⸻
+
+5. Calculate updated reference cycles (once per second)
+	•	✔ Great — these can be stored in a list of (timestamp, ref_cycle).
+	•	Timeline for updates = ref0_time + 1s, ref0_time + 2s, …, until end.
+
+⸻
+
+6. Smooth ref and PCA trajectories
+	•	✔ Ref cycles: absolutely yes (use smooth_trajectory).
+	•	PCA segments: optional. Smoothing them after segmentation might help visual clarity without distorting phase info.
+	•	Maybe allow toggle for smoothed vs raw PCA plot?
+	•	Optional idea: only smooth when plotting, not in data.
+
+⸻
+
+7. Divide PCA data into segments, assign ref cycle by timestamp
+	•	✔ Exactly right.
+	•	Associate each segment with the most recent ref cycle based on start time.
+	•	If no ref cycle yet at segment time: skip plotting or use initial ref cycle.
+	•	Log or mark such segments to know coverage gap.

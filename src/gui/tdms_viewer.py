@@ -8,9 +8,9 @@ from PyQt6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 from PyQt6.QtGui import QPainter, QShortcut, QKeySequence
 
 from scipy.signal import decimate
-from config import SAMPLING_RATE, CONVOLUTION_WINDOW
-from processing import load_tdms_data, apply_pca
-from utils import smooth_data_with_convolution
+from config import SAMPLING_RATE, CONVOLUTION_WINDOW, REFERENCE_NUM_POINTS
+from processing import load_tdms_data, apply_pca, detect_cycle_bounds, update_reference_cycle, assign_phase_indices
+from utils import smooth_data_with_convolution, smooth_trajectory
 from gui.pca_3d_viewer import PCA3DViewer
 
 
@@ -205,38 +205,56 @@ class TDMSViewer(QMainWindow):
                 self.error_label.setText("⚠ PCA time range out of bounds.")
                 return
 
+            # --- Calculate sample-aligned segment info ---
             segment_size = int(segment_duration * SAMPLING_RATE)
+            total_time = pca_end_time - pca_start_time
+            expected_segments = int(total_time / segment_duration)
+
+            total_samples_needed = expected_segments * segment_size
+            pad_samples = CONVOLUTION_WINDOW - 1
+            raw_end_sample = total_samples_needed + pad_samples
+
             start_idx = np.searchsorted(self.timestamps, pca_start_time)
-            end_idx = np.searchsorted(self.timestamps, pca_end_time)
+            end_idx = start_idx + raw_end_sample
+            end_idx = min(end_idx, len(self.timestamps))  # Safety cap
 
-            if start_idx >= end_idx:
-                self.error_label.setText("⚠ Invalid PCA time range.")
-                return
-
-            total_samples = end_idx - start_idx
-            expected_segments = total_samples // segment_size
-
-            if total_samples < segment_size:
-                self.error_label.setText("⚠ Not enough data for PCA.")
-                return
-
+            # --- Fetch Raw Data ---
             raw_signals = self.data[start_idx:end_idx, :]
-            smoothed = smooth_data_with_convolution(raw_signals)
+            raw_times = self.timestamps[start_idx:end_idx]
 
-            segments = []
-            for i in range(expected_segments):
-                seg_start = i * segment_size
-                seg_end = seg_start + segment_size
-                seg = smoothed[seg_start:seg_end]
-                X_pca = apply_pca(seg)
-                seg_start_time = self.timestamps[start_idx + seg_start]
-                seg_end_time = self.timestamps[start_idx + seg_end - 1]
-                segments.append((X_pca, seg_start_time, seg_end_time))
+            # --- Smoothing ---
+            smoothed_signals = smooth_data_with_convolution(raw_signals)
 
-            if segments:
-                self.error_label.setText("")
-                self.pca_viewer = PCA3DViewer(segments)
-                self.pca_viewer.show()
+            # --- PCA on entire smoothed data ---
+            X_pca = apply_pca(smoothed_signals)
+
+            # --- PCA ref cycle ---
+            ref_start, ref_end = detect_cycle_bounds(X_pca)
+
+            # --- Extract and smooth initial reference cycle ---
+            initial_cycle = X_pca[ref_start:ref_end]
+            M = len(initial_cycle)
+            avg_signal_d_av = np.zeros([M // REFERENCE_NUM_POINTS, 3])
+            for i in range(M // REFERENCE_NUM_POINTS):
+                avg_signal_d_av[i] = np.mean(initial_cycle[i * REFERENCE_NUM_POINTS : (i + 1) * REFERENCE_NUM_POINTS], axis=0)
+            smooth_ref_cycle = smooth_trajectory(avg_signal_d_av)
+
+            # --- Update reference cycle every second ---
+            update_interval_samples = SAMPLING_RATE
+            total_samples_pca = X_pca.shape[0]
+            updated_refs = [(self.timestamps[start_idx + ref_start], smooth_ref_cycle)]
+
+            i = ref_start
+            prev_phase = None
+            while i + update_interval_samples <= total_samples_pca:
+                segment = X_pca[i:i + update_interval_samples]
+                phase_indices = assign_phase_indices(segment, smooth_ref_cycle, prev_phase)
+                smooth_ref_cycle = update_reference_cycle(phase_indices, smooth_ref_cycle, segment)
+                updated_refs.append((self.timestamps[start_idx + i], smooth_ref_cycle))
+                prev_phase = phase_indices[-1]
+                i += update_interval_samples
+
+            print(f"Reference cycles calculated: {len(updated_refs)}")
 
         except ValueError:
             self.error_label.setText("⚠ Invalid PCA input.")
@@ -261,53 +279,3 @@ class TDMSViewer(QMainWindow):
         self.window_size = max(self.min_window_size, self.window_size - self.min_window_size)
         self.slider.setMaximum(len(self.timestamps) - self.window_size)
         self.update_window()
-
-    # --- Debugging ---
-    def debug_fetch_raw_data_for_pca(self):
-        try:
-            # --- Get user inputs ---
-            start_time = float(self.pca_start_input.text())
-            end_time = float(self.pca_end_input.text())
-            segment_duration = float(self.segment_size_input.text())
-
-            # --- Calculate segment samples ---
-            segment_size = int(segment_duration * SAMPLING_RATE)
-            total_time = end_time - start_time
-            expected_segments = int(total_time // segment_duration)
-            total_samples_needed = expected_segments * segment_size
-
-            print(f"\n--- PCA Data Fetch Debug ---")
-            print(f"Segment Duration: {segment_duration}s | Segment Size: {segment_size} samples")
-            print(f"Expected Segments: {expected_segments}")
-            print(f"Total Samples Needed (post-smoothing): {total_samples_needed}")
-
-            # --- Indexing: start + padding ---
-            start_idx = np.searchsorted(self.timestamps, start_time)
-            smoothing_pad = CONVOLUTION_WINDOW - 1
-            raw_end_idx = start_idx + total_samples_needed + smoothing_pad
-
-            print(f"Start Index: {start_idx} | Raw End Index (with pad): {raw_end_idx}")
-            print(f"Timestamps Range: {self.timestamps[0]:.6f}s to {self.timestamps[-1]:.6f}s")
-
-            # --- Bounds Check ---
-            if raw_end_idx > len(self.timestamps):
-                print("⚠ Not enough data for requested segments + smoothing.")
-                return
-
-            # --- Extract Raw Data + Timestamps ---
-            raw_data = self.data[start_idx:raw_end_idx, :]
-            raw_times = self.timestamps[start_idx:raw_end_idx]
-
-            print(f"Raw Data Shape: {raw_data.shape}")
-            print(f"Raw Times Range: {raw_times[0]:.6f}s to {raw_times[-1]:.6f}s")
-
-            # Optional: preview raw data stats
-            print(f"Raw Sample Interval: {raw_times[1] - raw_times[0]:.8f}s")
-            print(f"Expected Interval from SAMPLING_RATE: {1/SAMPLING_RATE:.8f}s")
-
-            print(f"--- End Debug ---\n")
-
-        except ValueError:
-            print("⚠ Invalid input: Ensure all PCA inputs are valid floats.")
-        except Exception as e:
-            print(f"⚠ Unexpected error: {e}")
