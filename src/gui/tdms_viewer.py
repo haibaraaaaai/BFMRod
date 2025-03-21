@@ -8,7 +8,7 @@ from PyQt6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 from PyQt6.QtGui import QPainter, QShortcut, QKeySequence
 
 from scipy.signal import decimate
-from config import SAMPLING_RATE
+from config import SAMPLING_RATE, CONVOLUTION_WINDOW
 from processing import load_tdms_data, apply_pca
 from utils import smooth_data_with_convolution
 from gui.pca_3d_viewer import PCA3DViewer
@@ -77,6 +77,11 @@ class TDMSViewer(QMainWindow):
         self.apply_button = QPushButton("Apply")
         self.apply_button.clicked.connect(self.apply_manual_window)
         self.control_panel.addWidget(self.apply_button)
+
+        # --- Debugging ---
+        self.debug_button = QPushButton("Debug Fetch Raw Data")
+        self.debug_button.clicked.connect(self.debug_fetch_raw_data_for_pca)
+        self.control_panel.addWidget(self.debug_button)
 
         # --- PCA Inputs ---
         self.pca_start_input = QLineEdit()
@@ -256,3 +261,53 @@ class TDMSViewer(QMainWindow):
         self.window_size = max(self.min_window_size, self.window_size - self.min_window_size)
         self.slider.setMaximum(len(self.timestamps) - self.window_size)
         self.update_window()
+
+    # --- Debugging ---
+    def debug_fetch_raw_data_for_pca(self):
+        try:
+            # --- Get user inputs ---
+            start_time = float(self.pca_start_input.text())
+            end_time = float(self.pca_end_input.text())
+            segment_duration = float(self.segment_size_input.text())
+
+            # --- Calculate segment samples ---
+            segment_size = int(segment_duration * SAMPLING_RATE)
+            total_time = end_time - start_time
+            expected_segments = int(total_time // segment_duration)
+            total_samples_needed = expected_segments * segment_size
+
+            print(f"\n--- PCA Data Fetch Debug ---")
+            print(f"Segment Duration: {segment_duration}s | Segment Size: {segment_size} samples")
+            print(f"Expected Segments: {expected_segments}")
+            print(f"Total Samples Needed (post-smoothing): {total_samples_needed}")
+
+            # --- Indexing: start + padding ---
+            start_idx = np.searchsorted(self.timestamps, start_time)
+            smoothing_pad = CONVOLUTION_WINDOW - 1
+            raw_end_idx = start_idx + total_samples_needed + smoothing_pad
+
+            print(f"Start Index: {start_idx} | Raw End Index (with pad): {raw_end_idx}")
+            print(f"Timestamps Range: {self.timestamps[0]:.6f}s to {self.timestamps[-1]:.6f}s")
+
+            # --- Bounds Check ---
+            if raw_end_idx > len(self.timestamps):
+                print("⚠ Not enough data for requested segments + smoothing.")
+                return
+
+            # --- Extract Raw Data + Timestamps ---
+            raw_data = self.data[start_idx:raw_end_idx, :]
+            raw_times = self.timestamps[start_idx:raw_end_idx]
+
+            print(f"Raw Data Shape: {raw_data.shape}")
+            print(f"Raw Times Range: {raw_times[0]:.6f}s to {raw_times[-1]:.6f}s")
+
+            # Optional: preview raw data stats
+            print(f"Raw Sample Interval: {raw_times[1] - raw_times[0]:.8f}s")
+            print(f"Expected Interval from SAMPLING_RATE: {1/SAMPLING_RATE:.8f}s")
+
+            print(f"--- End Debug ---\n")
+
+        except ValueError:
+            print("⚠ Invalid input: Ensure all PCA inputs are valid floats.")
+        except Exception as e:
+            print(f"⚠ Unexpected error: {e}")
