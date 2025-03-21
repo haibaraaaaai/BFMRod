@@ -6,3 +6,7 @@ scipy
 scikit-learn
 numba
 pyqt6-tools ## for Qt Designer
+PyQt6-Charts 
+pyqtgraph
+PyOpenGL 
+PyOpenGL_accelerate

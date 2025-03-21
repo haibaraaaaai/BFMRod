@@ -20,3 +20,11 @@ update is currently only useful for when there's a drift but not traj change, ho
 animation?
 
 Alternatively we can look to redo the reference cycle in case the trajectory has changed into something different by something that's not drift so can't be corrected with a simple update. Maybe we can just do a new reference cycle every minute instead of doing the update (and new ref cycle should handle drift anyway?) or we can use the tree again, if when the tree cannot find any neighbor for the current cycle maybe that's time to switch.  OR we can just wait for gui then we can monitor the change in trajectory and how it matches the reference cycle and mannually make changes when necessary?
+
+
+I guess allow user to change smoothing factors and other factors can be useful.
+
+Cache everything in memory once computed (raw, smoothed, PCA, ref cycles, segments).
+Show timeline of ref cycle evolution: user could even scroll to compare any two segments & their assigned ref cycles.
+Later on: allow real-time PCA updates or ref cycle re-calculation with different parameters (e.g., smoothing factor).
+Add color-coded drift metric between segment’s PCA and assigned ref cycle.
