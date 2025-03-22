@@ -33,28 +33,14 @@ Add color-coded drift metric between segment’s PCA and assigned ref cycle.
 
 Resolve .3f issue with tolorance?
 
-4. Detect reference cycle with detect_cycle_bounds
-	•	✔ Critical step — this must be before any updates.
-	•	This uses first part of PCA data; just make sure enough points exist before updates kick in.
+3. Dynamic Threshold Update Trigger
+Only update the reference cycle if:
 
-⸻
+Phase assignment error exceeds threshold.
+Distance from PCA segment to reference is large.
+This prevents updates when trajectory is unstable or noise-dominated.
 
-5. Calculate updated reference cycles (once per second)
-	•	✔ Great — these can be stored in a list of (timestamp, ref_cycle).
-	•	Timeline for updates = ref0_time + 1s, ref0_time + 2s, …, until end.
-
-⸻
-
-6. Smooth ref and PCA trajectories
-	•	✔ Ref cycles: absolutely yes (use smooth_trajectory).
-	•	PCA segments: optional. Smoothing them after segmentation might help visual clarity without distorting phase info.
-	•	Maybe allow toggle for smoothed vs raw PCA plot?
-	•	Optional idea: only smooth when plotting, not in data.
-
-⸻
-
-7. Divide PCA data into segments, assign ref cycle by timestamp
-	•	✔ Exactly right.
-	•	Associate each segment with the most recent ref cycle based on start time.
-	•	If no ref cycle yet at segment time: skip plotting or use initial ref cycle.
-	•	Log or mark such segments to know coverage gap.
+So issues are 1.we need to now re-update ref cycle base on input ref cycle 1s after input ref.
+2. manual input means new phase assignment but we still want to have continuity in phase
+3. how do we actually input index that just does not make sense for 250k sampling rate to pick out exactly a start and end point that forms one exact cycle on pca, might be better to input a timestamp and run a  new ref cycle detection (not update) base on the timestamp.
+4.need to be done on pca 3d so need to add buttons and stuff. For continuous checking probably better to let go of segment duration (since we are using 1s segmetn for update segment duration is really not that useful besides visualzation so perhaps we can instead plot all data points on a window with the same window control as the other viewer files. But then the issue is that if pyqtgraph is good at plotting a discontinuous ref cycle on top of this. and the idea would be pick the ref cycle whose midpoint is closest to the mid point of the window. 5 in case two windows are equally close need to decide in code what to do (not a big deal) 6 perhaps add a manual ref cycle button that performs a ref detection base on midpoint of current window, the new ref cycle is then immediately plotted, and all future ref need to now be updated base on this. perhaps we can also keep tabs of all the added ref cycles and can remove them or add back and see how that cahnges data and whatever
