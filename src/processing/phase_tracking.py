@@ -1,7 +1,8 @@
 import numpy as np
 from numba import njit
 from config import CONTINUITY_CONSTRAINT
-from utils import smooth_trajectory
+# from utils import smooth_trajectory
+# from scipy.interpolate import splprep, splev
 
 
 @njit
@@ -58,33 +59,32 @@ def assign_phase_indices(trajectory, reference_cycle, prev_phase=None):
 
     return index
 
+# def update_reference_cycle(phase_indices, reference_cycle, trajectory):
+#     """
+#     Updates the reference cycle using assigned phases by averaging corresponding 
+#     trajectory points mapped to each phase index.
 
-def update_reference_cycle(phase_indices, reference_cycle, trajectory):
-    """
-    Updates the reference cycle using assigned phases by averaging corresponding 
-    trajectory points mapped to each phase index.
+#     Args:
+#         phase_indices (np.ndarray): Phase indices mapping trajectory points to reference cycle points.
+#         reference_cycle (np.ndarray): Current reference cycle representing a full oscillation.
+#         trajectory (np.ndarray): Input trajectory data for updating the reference cycle.
 
-    Args:
-        phase_indices (np.ndarray): Phase indices mapping trajectory points to reference cycle points.
-        reference_cycle (np.ndarray): Current reference cycle representing a full oscillation.
-        trajectory (np.ndarray): Input trajectory data for updating the reference cycle.
+#     Returns:
+#         np.ndarray: Updated reference cycle after averaging corresponding points.
+#     """
+#     new_traj = np.zeros_like(reference_cycle)  # Initialize updated reference cycle
 
-    Returns:
-        np.ndarray: Updated reference cycle after averaging corresponding points.
-    """
-    new_traj = np.zeros_like(reference_cycle)  # Initialize updated reference cycle
+#     for i in range(reference_cycle.shape[0]):  # Iterate over each reference cycle index
+#         exp_points = np.where(phase_indices == i)[0]  # Find trajectory points mapped to this phase index
 
-    for i in range(reference_cycle.shape[0]):  # Iterate over each reference cycle index
-        exp_points = np.where(phase_indices == i)[0]  # Find trajectory points mapped to this phase index
+#         if len(exp_points) == 0:
+#             # If no trajectory points were mapped to this phase, retain the previous reference value
+#             new_traj[i] = reference_cycle[i]
+#         else:
+#             # Average the last 100 mapped points for a stable update
+#             new_traj[i] = np.mean(trajectory[exp_points[-100:]], axis=0)
 
-        if len(exp_points) == 0:
-            # If no trajectory points were mapped to this phase, retain the previous reference value
-            new_traj[i] = reference_cycle[i]
-        else:
-            # Average the last 100 mapped points for a stable update
-            new_traj[i] = np.mean(trajectory[exp_points[-100:]], axis=0)
+#     # Smooth the updated reference cycle to maintain continuity
+#     new_traj = smooth_trajectory(new_traj)
 
-    # Smooth the updated reference cycle to maintain continuity
-    new_traj = smooth_trajectory(new_traj)
-
-    return new_traj
+#     return new_traj

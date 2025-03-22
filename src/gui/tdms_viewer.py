@@ -4,14 +4,16 @@ from PyQt6.QtWidgets import (
     QLineEdit, QPushButton
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
-from PyQt6.QtGui import QPainter, QShortcut, QKeySequence
+from PyQt6.QtGui import QShortcut, QKeySequence
 
+import pyqtgraph as pg
 from scipy.signal import decimate
 from config import SAMPLING_RATE, CONVOLUTION_WINDOW, REFERENCE_NUM_POINTS
-from processing import load_tdms_data, apply_pca, detect_cycle_bounds, update_reference_cycle, assign_phase_indices
+from processing import load_tdms_data, apply_pca, detect_cycle_bounds, assign_phase_indices
 from utils import smooth_data_with_convolution, smooth_trajectory
 from gui.pca_3d_viewer import PCA3DViewer
+from gui.phase_viewer import PhaseViewer
+from gui.pca_speed_viewer import PCASpeedViewer
 
 
 class TDMSViewer(QMainWindow):
@@ -38,17 +40,15 @@ class TDMSViewer(QMainWindow):
         self.final_layout = QVBoxLayout(self.central_widget)
         self.top_layout = QHBoxLayout()
 
-        # --- Chart ---
-        self.chart = QChart()
-        self.chart.setTitle("TDMS Data Viewer")
-        self.chart_view = QChartView(self.chart)
-        self.chart_view.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self.top_layout.addWidget(self.chart_view)
+        # --- Plot Widget (PyQtGraph) ---
+        self.plot_widget = pg.PlotWidget(title="TDMS Data Viewer")
+        self.plot_widget.setLabel('left', "Signal")
+        self.plot_widget.setLabel('bottom', "Time (s)")
+        self.plot_widget.showGrid(x=True, y=True)
+        self.plot_widget.setBackground('w')  # White background (optional)
+        self.plot_widget.addLegend()
+        self.top_layout.addWidget(self.plot_widget)
 
-        self.axis_x = QValueAxis()
-        self.axis_y = QValueAxis()
-        self.chart.addAxis(self.axis_x, Qt.AlignmentFlag.AlignBottom)
-        self.chart.addAxis(self.axis_y, Qt.AlignmentFlag.AlignLeft)
         self.series_list = []
 
         # --- Control Panel ---
@@ -78,11 +78,6 @@ class TDMSViewer(QMainWindow):
         self.apply_button.clicked.connect(self.apply_manual_window)
         self.control_panel.addWidget(self.apply_button)
 
-        # --- Debugging ---
-        self.debug_button = QPushButton("Debug Fetch Raw Data")
-        self.debug_button.clicked.connect(self.debug_fetch_raw_data_for_pca)
-        self.control_panel.addWidget(self.debug_button)
-
         # --- PCA Inputs ---
         self.pca_start_input = QLineEdit()
         self.pca_start_input.setPlaceholderText("PCA Start Time (s)")
@@ -99,7 +94,7 @@ class TDMSViewer(QMainWindow):
         self.segment_size_input = QLineEdit()
         self.segment_size_input.setPlaceholderText("Segment Size (s)")
         self.segment_size_input.setFixedWidth(120)
-        self.segment_size_input.setText("0.01")
+        self.segment_size_input.setText("1")
         self.control_panel.addWidget(self.segment_size_input)
 
         self.pca_button = QPushButton("Run PCA")
@@ -142,30 +137,24 @@ class TDMSViewer(QMainWindow):
         time_window = self.timestamps[self.start_index:end_index]
         selected_channels = [i for i, cb in enumerate(self.checkboxes) if cb.isChecked()]
 
-        self.chart.removeAllSeries()
+        self.plot_widget.clear()
         self.series_list.clear()
-
         all_data = []
+
         for i in selected_channels:
             data_dec = decimate(self.data[self.start_index:end_index, i], self.decimation_factor)
             time_dec = np.linspace(time_window[0], time_window[-1], len(data_dec))
 
-            series = QLineSeries()
-            series.setUseOpenGL(True)
-            for t, val in zip(time_dec, data_dec):
-                series.append(t, val)
-
-            series.setName(self.channel_names[i])
-            self.chart.addSeries(series)
-            series.attachAxis(self.axis_x)
-            series.attachAxis(self.axis_y)
-            self.series_list.append(series)
+            colors = ['r', 'g', 'b', 'm', 'c', 'y']
+            pen = pg.mkPen(color=colors[i % len(colors)], width=1)
+            plot_item = self.plot_widget.plot(time_dec, data_dec, pen=pen, name=self.channel_names[i])
+            self.series_list.append(plot_item)
             all_data.append(data_dec)
 
         if all_data:
             flat_data = np.concatenate(all_data)
-            self.axis_x.setRange(time_window[0], time_window[-1])
-            self.axis_y.setRange(float(np.min(flat_data)), float(np.max(flat_data)))
+            self.plot_widget.setXRange(time_window[0], time_window[-1])
+            self.plot_widget.setYRange(float(np.min(flat_data)), float(np.max(flat_data)))
 
         self.start_time_input.setText(f"{time_window[0]:.3f}")
         self.end_time_input.setText(f"{time_window[-1]:.3f}")
@@ -201,11 +190,12 @@ class TDMSViewer(QMainWindow):
             pca_end_time = float(self.pca_end_input.text())
             segment_duration = float(self.segment_size_input.text())
 
+
             if pca_start_time < self.timestamps[0] or pca_end_time > self.timestamps[-1]:
                 self.error_label.setText("⚠ PCA time range out of bounds.")
                 return
 
-            # --- Calculate sample-aligned segment info ---
+            # --- Calculate segment info ---
             segment_size = int(segment_duration * SAMPLING_RATE)
             total_time = pca_end_time - pca_start_time
             expected_segments = int(total_time / segment_duration)
@@ -215,23 +205,34 @@ class TDMSViewer(QMainWindow):
             raw_end_sample = total_samples_needed + pad_samples
 
             start_idx = np.searchsorted(self.timestamps, pca_start_time)
-            end_idx = start_idx + raw_end_sample
-            end_idx = min(end_idx, len(self.timestamps))  # Safety cap
+            end_idx = min(start_idx + raw_end_sample, len(self.timestamps))  # Safety cap
+
 
             # --- Fetch Raw Data ---
             raw_signals = self.data[start_idx:end_idx, :]
-            raw_times = self.timestamps[start_idx:end_idx]
 
             # --- Smoothing ---
             smoothed_signals = smooth_data_with_convolution(raw_signals)
 
-            # --- PCA on entire smoothed data ---
+            # --- PCA ---
             X_pca = apply_pca(smoothed_signals)
 
-            # --- PCA ref cycle ---
+            # --- Segment PCA Data (no additional smoothing) ---
+            pca_segments = []
+            for seg_idx in range(expected_segments):
+                seg_start = seg_idx * segment_size
+                seg_end = seg_start + segment_size
+                if seg_end > X_pca.shape[0]:
+                    break
+                segment_data = X_pca[seg_start:seg_end]
+                seg_start_time = self.timestamps[start_idx + pad_samples + seg_start]
+                seg_end_time = self.timestamps[start_idx + pad_samples + seg_end - 1]
+                pca_segments.append((segment_data, seg_start_time, seg_end_time))
+
+
+            # --- Reference Cycle ---
             ref_start, ref_end = detect_cycle_bounds(X_pca)
 
-            # --- Extract and smooth initial reference cycle ---
             initial_cycle = X_pca[ref_start:ref_end]
             M = len(initial_cycle)
             avg_signal_d_av = np.zeros([M // REFERENCE_NUM_POINTS, 3])
@@ -239,22 +240,77 @@ class TDMSViewer(QMainWindow):
                 avg_signal_d_av[i] = np.mean(initial_cycle[i * REFERENCE_NUM_POINTS : (i + 1) * REFERENCE_NUM_POINTS], axis=0)
             smooth_ref_cycle = smooth_trajectory(avg_signal_d_av)
 
-            # --- Update reference cycle every second ---
+            # --- Update Ref Cycle Averaging Last Fixed Window ---
             update_interval_samples = SAMPLING_RATE
             total_samples_pca = X_pca.shape[0]
             updated_refs = [(self.timestamps[start_idx + ref_start], smooth_ref_cycle)]
 
-            i = ref_start
+            # Initialize phase tracking
+            i = 0
+            phase0 = np.array([], dtype=np.int32)
             prev_phase = None
-            while i + update_interval_samples <= total_samples_pca:
-                segment = X_pca[i:i + update_interval_samples]
-                phase_indices = assign_phase_indices(segment, smooth_ref_cycle, prev_phase)
-                smooth_ref_cycle = update_reference_cycle(phase_indices, smooth_ref_cycle, segment)
-                updated_refs.append((self.timestamps[start_idx + i], smooth_ref_cycle))
-                prev_phase = phase_indices[-1]
-                i += update_interval_samples
 
-            print(f"Reference cycles calculated: {len(updated_refs)}")
+            while i < total_samples_pca:
+                # Get last 1 second of data
+                segment = X_pca[i : min(i + update_interval_samples, total_samples_pca)]
+
+                if segment.shape[0] == 0:
+                    break
+
+                phase_indices = assign_phase_indices(segment, smooth_ref_cycle, prev_phase)
+
+                # Create new ref by averaging per phase
+                phase_bins = [[] for _ in range(len(smooth_ref_cycle))]
+                fraction = 0.05
+                cut_start = int(len(segment) * (1 - fraction))
+                for idx in range(cut_start, len(segment)):
+                    phase_bins[phase_indices[idx]].append(segment[idx])
+
+                # Interpolate missing phases
+                if all(phase_bins):
+                    pass  # No interpolation needed
+                else:
+                    for p_idx in range(len(phase_bins)):
+                        if not phase_bins[p_idx]:
+                            left = (p_idx - 1) % len(smooth_ref_cycle)
+                            right = (p_idx + 1) % len(smooth_ref_cycle)
+                            # Find nearest non-empty bins
+                            while not phase_bins[left]:
+                                left = (left - 1) % len(smooth_ref_cycle)
+                            while not phase_bins[right]:
+                                right = (right + 1) % len(smooth_ref_cycle)
+                            # Average left and right
+                            interpolated = 0.5 * (np.mean(phase_bins[left], axis=0) + np.mean(phase_bins[right], axis=0))
+                            phase_bins[p_idx] = [interpolated]
+
+                new_ref = np.array([np.median(points, axis=0) for points in phase_bins])
+                ALPHA = 0.2  # Blend factor
+                blended_ref = (1 - ALPHA) * smooth_ref_cycle + ALPHA * new_ref
+                smooth_ref_cycle = smooth_trajectory(blended_ref)
+                updated_refs.append((self.timestamps[start_idx + i], smooth_ref_cycle))
+
+                i += update_interval_samples
+                phase0 = np.concatenate((phase0, phase_indices))
+                prev_phase = phase_indices[-1]
+
+            phase = phase0 / len(smooth_ref_cycle) * 2 * np.pi
+            phase = np.unwrap(phase)
+
+            self.phase_data = phase
+            self.phase_time = self.timestamps[start_idx : start_idx + len(phase)]
+
+            if pca_segments:
+                self.pca_viewer = PCA3DViewer(pca_segments, updated_refs)
+                self.pca_viewer.show()
+
+                self.phase_viewer = PhaseViewer(self.phase_time, self.phase_data)
+                self.phase_viewer.show()
+
+            try:
+                self.speed_viewer = PCASpeedViewer(self.phase_data, self.phase_time, sampling_rate=1 / SAMPLING_RATE)
+                self.speed_viewer.show()
+            except Exception as e:
+                self.error_label.setText(f"⚠ PCA error: {e}")
 
         except ValueError:
             self.error_label.setText("⚠ Invalid PCA input.")
@@ -263,19 +319,21 @@ class TDMSViewer(QMainWindow):
 
     # --- Navigation Shortcuts ---
     def move_window_left(self):
-        step_size = int(self.window_size * self.window_step_fraction)
+        step_size = max(100, int(self.window_size * 0.1))
         self.slider.setValue(max(0, self.start_index - step_size))
 
     def move_window_right(self):
-        step_size = int(self.window_size * self.window_step_fraction)
+        step_size = max(100, int(self.window_size * 0.1))
         self.slider.setValue(min(len(self.timestamps) - self.window_size, self.start_index + step_size))
 
     def increase_window_size(self):
-        self.window_size = min(len(self.timestamps), self.window_size + self.min_window_size)
+        step_size = max(100, int(self.window_size * 0.2))
+        self.window_size = min(len(self.timestamps), self.window_size + step_size)
         self.slider.setMaximum(len(self.timestamps) - self.window_size)
         self.update_window()
 
     def decrease_window_size(self):
-        self.window_size = max(self.min_window_size, self.window_size - self.min_window_size)
+        step_size = max(100, int(self.window_size * 0.2))
+        self.window_size = max(self.min_window_size, self.window_size - step_size)
         self.slider.setMaximum(len(self.timestamps) - self.window_size)
         self.update_window()
