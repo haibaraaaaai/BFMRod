@@ -97,6 +97,12 @@ class TDMSViewer(QMainWindow):
         self.segment_size_input.setText("1")
         self.control_panel.addWidget(self.segment_size_input)
 
+        self.closure_threshold_input = QLineEdit()
+        self.closure_threshold_input.setPlaceholderText("Closure Threshold")
+        self.closure_threshold_input.setFixedWidth(120)
+        self.closure_threshold_input.setText("40")
+        self.control_panel.addWidget(self.closure_threshold_input)
+
         self.pca_button = QPushButton("Run PCA")
         self.pca_button.clicked.connect(self.run_pca_analysis)
         self.control_panel.addWidget(self.pca_button)
@@ -231,7 +237,8 @@ class TDMSViewer(QMainWindow):
 
 
             # --- Reference Cycle ---
-            ref_start, ref_end = detect_cycle_bounds(X_pca)
+            closure_threshold = int(self.closure_threshold_input.text())
+            ref_start, ref_end = detect_cycle_bounds(X_pca, closure_threshold)
 
             initial_cycle = X_pca[ref_start:ref_end]
             M = len(initial_cycle)
@@ -260,7 +267,7 @@ class TDMSViewer(QMainWindow):
 
                 # Create new ref by averaging per phase
                 phase_bins = [[] for _ in range(len(smooth_ref_cycle))]
-                fraction = 0.05
+                fraction = 0.025
                 cut_start = int(len(segment) * (1 - fraction))
                 for idx in range(cut_start, len(segment)):
                     phase_bins[phase_indices[idx]].append(segment[idx])

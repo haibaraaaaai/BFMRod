@@ -16,4 +16,4 @@ DO_UPDATE_REFERENCE_CYCLE = True  # Enable drift correction
 UPDATE_REFERENCE_CYCLE_SIZE = 250000  # Interval for updating reference cycle
 
 # Phase Tracking
-CONTINUITY_CONSTRAINT = REFERENCE_NUM_POINTS // 10  # Search neighborhood size for phase continuity
+CONTINUITY_CONSTRAINT = REFERENCE_NUM_POINTS // 10  # Search neighborhood size for phase continuity, orignally // 10

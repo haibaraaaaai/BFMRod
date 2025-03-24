@@ -59,6 +59,46 @@ def assign_phase_indices(trajectory, reference_cycle, prev_phase=None):
 
     return index
 
+# LAMBDA = 40  # Decay constant for exponential weighting (tunable)
+
+# @njit
+# def assign_phase_indices(trajectory, reference_cycle, prev_phase=None):
+#     num_points = trajectory.shape[0]
+#     len_array = reference_cycle.shape[0]
+#     index = np.empty(num_points, dtype=np.int32)
+
+#     if prev_phase is not None:
+#         neighboring_indices = (prev_phase - np.arange(-CONTINUITY_CONSTRAINT, CONTINUITY_CONSTRAINT)) % len_array
+#         diff = reference_cycle[neighboring_indices] - trajectory[0, :3]
+#         distances = np.sum(diff**2, axis=1)
+
+#         # Apply exponential weighting to distances
+#         center_idx = CONTINUITY_CONSTRAINT  # Index of 0 offset in neighbors
+#         penalties = np.exp(np.abs(np.arange(-CONTINUITY_CONSTRAINT, CONTINUITY_CONSTRAINT)) / LAMBDA)
+#         weighted_distances = distances * penalties
+
+#         best_distance = np.argmin(weighted_distances)
+#         index[0] = neighboring_indices[best_distance]
+#     else:
+#         diff = reference_cycle - trajectory[0, :3]
+#         distances = np.sum(diff**2, axis=1)
+#         best_distance = np.argmin(distances)
+#         index[0] = best_distance
+
+#     for i in range(1, num_points):
+#         last_index = index[i - 1]
+#         neighboring_indices = (last_index - np.arange(-CONTINUITY_CONSTRAINT, CONTINUITY_CONSTRAINT)) % len_array
+#         diff = reference_cycle[neighboring_indices] - trajectory[i, :3]
+#         distances = np.sum(diff**2, axis=1)
+
+#         penalties = np.exp(np.abs(np.arange(-CONTINUITY_CONSTRAINT, CONTINUITY_CONSTRAINT)) / LAMBDA)
+#         weighted_distances = distances * penalties
+
+#         best_distance = np.argmin(weighted_distances)
+#         index[i] = neighboring_indices[best_distance]
+
+#     return index
+
 # def update_reference_cycle(phase_indices, reference_cycle, trajectory):
 #     """
 #     Updates the reference cycle using assigned phases by averaging corresponding 

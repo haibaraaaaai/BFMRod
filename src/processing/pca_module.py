@@ -2,10 +2,7 @@ import numpy as np
 from scipy.signal import find_peaks, peak_widths
 from scipy.spatial import KDTree
 from sklearn.decomposition import PCA
-from config import WINDOW_DETECTION, FIRST_CYCLE_DETECTION_LIMIT, END_OF_CYCLE_LIMIT, load_settings
-
-settings = load_settings()
-NEIGHBOR_WINDOW_DIVISOR = settings["neighbor_window_divisor"]
+from config import WINDOW_DETECTION, FIRST_CYCLE_DETECTION_LIMIT, END_OF_CYCLE_LIMIT
 
 
 def apply_pca(smoothed_data, n_components=4):
@@ -26,7 +23,7 @@ def apply_pca(smoothed_data, n_components=4):
     return X_pca[:, :3]  # Retain only the first three principal components
 
 
-def detect_cycle_bounds(trajectory):
+def detect_cycle_bounds(trajectory, closure_threshold=40):
     """
     Identify the start and end indices of a representative cycle in the PCA trajectory.
 
@@ -40,7 +37,9 @@ def detect_cycle_bounds(trajectory):
     main_component = trajectory[:FIRST_CYCLE_DETECTION_LIMIT, 0]
     minp = np.min(main_component)
     maxp = np.max(main_component)
-    amplitude_90 = minp + 0.9 * (maxp - minp)  # Define threshold at 90% of max amplitude
+    amplitude_90 = minp + 0.9 * (maxp - minp)  # Define threshold at 90% of max amplitude    
+
+    CLOSURE_THRESHOLD = closure_threshold
 
     # Identify candidate start indices where the main component crosses the threshold
     possible_starts = np.where(main_component > amplitude_90)[0]
@@ -67,7 +66,7 @@ def detect_cycle_bounds(trajectory):
 
     # Compute a median-based threshold for detecting cycle boundaries
     distances_close = np.linalg.norm(
-        trajectory[start_index, :] - trajectory[start_index: start_index + WINDOW_DETECTION // NEIGHBOR_WINDOW_DIVISOR, :], axis=1
+        trajectory[start_index, :] - trajectory[start_index: start_index + CLOSURE_THRESHOLD, :], axis=1
     )
     close_distance_threshold = np.median(distances_close)
 
