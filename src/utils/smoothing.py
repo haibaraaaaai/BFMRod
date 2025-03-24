@@ -1,11 +1,6 @@
 import numpy as np
 from scipy.interpolate import splev, splprep
-from config import CONVOLUTION_WINDOW
-from config.settings import load_settings
-
-settings = load_settings()
-REFERENCE_NUM_POINTS = settings.get("reference_num_points", 200)  # Default to 200 if not in settings
-SMOOTHING = settings.get("smoothing", 0.001)  # Default to 0.001 if not in settings
+from config import CONVOLUTION_WINDOW, SMOOTHING, REFERENCE_NUM_POINTS
 
 
 def smooth_data_with_convolution(signals, window_size=CONVOLUTION_WINDOW):

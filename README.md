@@ -44,3 +44,104 @@ So issues are 1.we need to now re-update ref cycle base on input ref cycle 1s af
 2. manual input means new phase assignment but we still want to have continuity in phase
 3. how do we actually input index that just does not make sense for 250k sampling rate to pick out exactly a start and end point that forms one exact cycle on pca, might be better to input a timestamp and run a  new ref cycle detection (not update) base on the timestamp.
 4.need to be done on pca 3d so need to add buttons and stuff. For continuous checking probably better to let go of segment duration (since we are using 1s segmetn for update segment duration is really not that useful besides visualzation so perhaps we can instead plot all data points on a window with the same window control as the other viewer files. But then the issue is that if pyqtgraph is good at plotting a discontinuous ref cycle on top of this. and the idea would be pick the ref cycle whose midpoint is closest to the mid point of the window. 5 in case two windows are equally close need to decide in code what to do (not a big deal) 6 perhaps add a manual ref cycle button that performs a ref detection base on midpoint of current window, the new ref cycle is then immediately plotted, and all future ref need to now be updated base on this. perhaps we can also keep tabs of all the added ref cycles and can remove them or add back and see how that cahnges data and whatever
+
+
+
+angle smoothing
+load module to reload function
+exponential lamda = 40 weighted neighbouring search
+pca0 ref0[phase]
+anisotropy vs total intensity (xyz normalized to -1 and 1)
+
+
+
+
+🧩 Breakdown and Suggestions:
+
+1. Manual Input of Ref Cycle – Timestamp vs Index
+
+	Issue: High sampling rate makes manual index input impractical.
+
+✅ Suggestion: Timestamp-based input is definitely better. Let the user input approximate timestamp, and use ref cycle detection to automatically find the best cycle centered around that timestamp.
+	•	Implement:
+	•	User inputs time T via input box or clicks a button (“Use Midpoint of Current Window”).
+	•	Run a localized detect_cycle_bounds() on PCA data near T.
+	•	New ref cycle is detected and plotted immediately.
+
+⸻
+
+2. Phase Continuity after Manual Ref Cycle Input
+
+	Issue: Phase reassignment with continuity.
+
+✅ You’re absolutely right to preserve phase continuity. When assigning phases after a manual ref cycle:
+	•	Use the last assigned phase index before the new cycle as the prev_phase input for assign_phase_indices().
+	•	This ensures unwrapping remains smooth without discontinuities.
+
+⸻
+
+3. Ref Cycle Visualization Over PCA Data
+
+	Issue: Efficient plotting of updated ref cycles over all PCA data.
+
+✅ Drop segment duration, instead:
+	•	Plot entire PCA trajectory within a movable window (use same slider/arrow keys as other viewers).
+	•	For each window update, pick nearest ref cycle (by midpoint) and overlay it in discontinuous dashed line or different color.
+
+✅ pyqtgraph is great for this:
+	•	It supports plotting segments with custom styles.
+	•	Overlay with plot() using pen=pg.mkPen(style=Qt.DashLine) for ref cycle.
+	•	Efficient even with large data, especially if decimated for visualization.
+
+⸻
+
+4. Handling Equidistant Ref Cycles (Edge Case)
+
+	Issue: Two ref cycles equally close to window midpoint.
+
+✅ Resolution:
+	•	Pick the earlier one (deterministic).
+	•	Log this decision for transparency, optional debug print: "Equidistant refs found, picked earlier."
+
+⸻
+
+5. Managing Ref Cycles (Add/Remove/Test Impact)
+
+	Feature: Ref cycle management and testing impact on phase/speed.
+
+💡 Very useful long-term.
+	•	Track ref cycles in a list: [(timestamp, ref_cycle_array)]
+	•	Allow:
+	•	Toggle visibility of each ref.
+	•	Delete/add via GUI.
+	•	Trigger re-phase assignment and re-compute speed.
+
+Optional: Let user tag ref cycles (e.g., “good”, “test”) for traceability.
+
+⸻
+
+🔧 Implementation Plan (Suggested Order):
+	1.	Add timestamp input + “Use Window Midpoint” button in PCA viewer.
+	2.	Detect new ref cycle near timestamp, plot immediately.
+	3.	Append to updated_refs, trigger re-phase with continuity.
+	4.	Update overlay logic in 3D viewer: show closest ref cycle per window.
+	5.	Add window navigation controls (slider/keys) to PCA viewer.
+	6.	Implement ref cycle management UI (optional but powerful).
+
+⸻
+
+💭 Final Thought
+
+This plan keeps your GUI interactive, precise, and scalable. I think the shift from segment-based viewing to window-based for PCA is a great call — consistent UX and better control.
+
+You’ve got a solid architecture going here. When you’re back with fresh brain, we can sketch out any part of this, including GUI layout, ref cycle detection tuning, or efficient 3D plot overlay in pyqtgraph.
+
+Let me know how you’d like to begin when you’re back!
+
+test modulation
+
+test numba
+transient pauses paper
+
+prep na induction channels glassslide
+3s na exchange time fork type channel

@@ -1,6 +1,0 @@
-{
-    "start_time": 0,
-    "end_time": 1,
-    "neighbor_window_divisor": 10,
-    "cycle_indices": [10000, 30000]
-}
