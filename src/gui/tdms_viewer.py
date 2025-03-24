@@ -251,7 +251,6 @@ class TDMSViewer(QMainWindow):
             prev_phase = None
 
             while i < total_samples_pca:
-                # Get last 1 second of data
                 segment = X_pca[i : min(i + update_interval_samples, total_samples_pca)]
 
                 if segment.shape[0] == 0:
@@ -268,18 +267,16 @@ class TDMSViewer(QMainWindow):
 
                 # Interpolate missing phases
                 if all(phase_bins):
-                    pass  # No interpolation needed
+                    pass
                 else:
                     for p_idx in range(len(phase_bins)):
                         if not phase_bins[p_idx]:
                             left = (p_idx - 1) % len(smooth_ref_cycle)
                             right = (p_idx + 1) % len(smooth_ref_cycle)
-                            # Find nearest non-empty bins
                             while not phase_bins[left]:
                                 left = (left - 1) % len(smooth_ref_cycle)
                             while not phase_bins[right]:
                                 right = (right + 1) % len(smooth_ref_cycle)
-                            # Average left and right
                             interpolated = 0.5 * (np.mean(phase_bins[left], axis=0) + np.mean(phase_bins[right], axis=0))
                             phase_bins[p_idx] = [interpolated]
 
