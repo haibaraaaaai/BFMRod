@@ -12,14 +12,14 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QShortcut, QKeySequence
 
-from scipy.signal import decimate
+from scipy.signal import decimate, savgol_filter
 
 from config import SAMPLING_RATE, CONVOLUTION_WINDOW, REFERENCE_NUM_POINTS
 from processing.tdms_loader import load_tdms_data
 from processing.pca_module import apply_pca, detect_cycle_bounds
 from processing.phase_tracking import assign_phase_indices
 from utils.smoothing import smooth_data_with_convolution, smooth_trajectory
-from utils.filter_utils import chi2_filter_njit_slope_steps
+# from utils.filter_utils import chi2_filter_njit_slope_steps
 from utils.linearizing_function import linearizing_speed_function
 
 from gui.pca_3d_viewer import PCA3DViewer
@@ -245,17 +245,19 @@ class TDMSViewer(QMainWindow):
 
             # --- Track Phases and Update Ref Cycle ---
             # Here linearizing is used to smooth out the speed so that it would be more uniform for each cycle.
-            updated_refs, phase_chi2, phase_time = self._track_phases(X_pca, smooth_ref_cycle, start_idx, ref_start)
+            updated_refs, phase, phase_time = self._track_phases(X_pca, smooth_ref_cycle, start_idx, ref_start)
             dt = 1 / SAMPLING_RATE
-            raw_speed = np.gradient(phase_chi2, dt)
-            phi_wrapped_chi2 = phase_chi2 % (2 * np.pi)
+
+            phase = savgol_filter(phase, window_length=51, polyorder=3)
+            raw_speed = np.gradient(phase, dt)
+            phi_wrapped = phase % (2 * np.pi)
             # the plotting within linearizing_function.py seems not to be working, so show=0
-            f = linearizing_speed_function(phi_wrapped_chi2, raw_speed, N=500, fftfilter=1, mfilter=7, show=0)
-            phi_corrected = f(phi_wrapped_chi2)
-            phase_chi2_linearized = np.unwrap(phi_corrected)
+            f = linearizing_speed_function(phi_wrapped, raw_speed, N=500, fftfilter=1, mfilter=7, show=0)
+            phi_corrected = f(phi_wrapped)
+            phase = np.unwrap(phi_corrected)
 
             # --- Show Visualizations ---
-            self.phase_data = phase_chi2_linearized
+            self.phase_data = phase
             self.phase_time = phase_time
 
             if pca_segments:
@@ -349,10 +351,11 @@ class TDMSViewer(QMainWindow):
 
         # Experimental: Chi2 Filtering can smooth phase data while perserving changes.
         # Computation heavy, so swap to Savitzky–Golay filter if that's too slow.
-        phase_chi2 = chi2_filter_njit_slope_steps(phase, sigma=0.05)
+        # phase = chi2_filter_njit_slope_steps(phase, sigma=0.05)
+
         phase_time = self.timestamps[start_idx : start_idx + len(phase)]
 
-        return updated_refs, phase_chi2, phase_time
+        return updated_refs, phase, phase_time
 
     # --- Navigation Shortcuts ---
     def move_window_left(self):
