@@ -1,113 +1,112 @@
+"""
+pca_module.py – PCA transformation and representative cycle detection on 3D trajectories.
+"""
+
 import numpy as np
 from scipy.signal import find_peaks, peak_widths
 from scipy.spatial import KDTree
 from sklearn.decomposition import PCA
-from config import WINDOW_DETECTION, FIRST_CYCLE_DETECTION_LIMIT, END_OF_CYCLE_LIMIT
+
+from config import (
+    WINDOW_DETECTION,
+    FIRST_CYCLE_DETECTION_LIMIT,
+    END_OF_CYCLE_LIMIT,
+)
 
 
 def apply_pca(smoothed_data, n_components=4):
     """
-    Perform Principal Component Analysis (PCA) to reduce dimensionality of smoothed signals.
+    Perform Principal Component Analysis (PCA) to reduce signal dimensionality.
 
     Args:
-        smoothed_data (np.ndarray): Preprocessed signal data
-        n_components (int): Number of PCA components to retain
+        smoothed_data (np.ndarray): Preprocessed signal data.
+        n_components (int): Number of PCA components to compute.
 
     Returns:
         tuple:
-            - X_pca (np.ndarray): Transformed PCA components (first three principal components)
-            - pca (PCA): PCA model containing eigenvectors and explained variance
+            - X_pca (np.ndarray): Transformed PCA data (N x 3).
+            - pca (PCA): Trained PCA model.
     """
     pca = PCA(n_components=n_components)
     X_pca = pca.fit_transform(smoothed_data)
-    return X_pca[:, :3]  # Retain only the first three principal components
+    return X_pca[:, :3], pca  # Return first 3 components + model
 
 
 def detect_cycle_bounds(trajectory, closure_threshold=40):
     """
-    Identify the start and end indices of a representative cycle in the PCA trajectory.
+    Identify start and end indices of a representative cycle in PCA-transformed trajectory.
 
     Args:
-        trajectory (np.ndarray): PCA-transformed data (3D trajectory)
+        trajectory (np.ndarray): PCA-transformed data (N x 3).
+        closure_threshold (int): Window size to assess closure proximity (default 40).
 
     Returns:
-        tuple: (start_index, end_index) of the detected cycle
+        tuple:
+            - start_index (int): Index of cycle start.
+            - end_index (int): Index of cycle end.
     """
-    # Extract the first PCA component (assumed to capture the dominant cycle behavior)
+    # Step 1: Use first PCA component to identify candidate cycle starts
     main_component = trajectory[:FIRST_CYCLE_DETECTION_LIMIT, 0]
-    minp = np.min(main_component)
-    maxp = np.max(main_component)
-    amplitude_90 = minp + 0.9 * (maxp - minp)  # Define threshold at 90% of max amplitude    
-
-    CLOSURE_THRESHOLD = closure_threshold
-
-    # Identify candidate start indices where the main component crosses the threshold
+    amplitude_90 = np.min(main_component) + 0.9 * (np.max(main_component) - np.min(main_component))
     possible_starts = np.where(main_component > amplitude_90)[0]
 
-    # Filter candidate starts to ensure sufficient separation between detected points
-    min_distance = 1000  # Minimum separation between detected starts
+    # Filter starts to ensure sufficient separation
+    min_distance = 1_000
     filtered_starts = [possible_starts[0]]
     for idx in possible_starts[1:]:
         if idx - filtered_starts[-1] > min_distance:
             filtered_starts.append(idx)
-        if len(filtered_starts) > 5:  # Limit to 5 potential cycle starts
+        if len(filtered_starts) > 5:
             break
     possible_starts = np.array(filtered_starts)
 
-    # Select the best start index based on maximum variation within the assumed cycle
-    max_variation = 0
-    best_start = possible_starts[0]
+    # Select best start based on max variation
+    best_start, max_variation = possible_starts[0], 0
     for start in possible_starts:
-        variation = np.sum(np.diff(main_component[start: start + END_OF_CYCLE_LIMIT]) ** 2)
+        variation = np.sum(np.diff(main_component[start:start + END_OF_CYCLE_LIMIT]) ** 2)
         if variation > max_variation:
             max_variation = variation
             best_start = start
     start_index = best_start
 
-    # Compute a median-based threshold for detecting cycle boundaries
+    # Step 2: Detect cycle end via neighbor overlap analysis
     distances_close = np.linalg.norm(
-        trajectory[start_index, :] - trajectory[start_index: start_index + CLOSURE_THRESHOLD, :], axis=1
+        trajectory[start_index] - trajectory[start_index:start_index + closure_threshold],
+        axis=1
     )
     close_distance_threshold = np.median(distances_close)
 
-    # Construct a KDTree for efficient nearest-neighbor lookup in PCA space
-    tree_trajectory = KDTree(trajectory[start_index: start_index + WINDOW_DETECTION, :])
+    # Create KDTree for reference segment
+    ref_tree = KDTree(trajectory[start_index:start_index + WINDOW_DETECTION])
 
-    # Evaluate neighbor counts for potential cycle end candidates
-    nb_neighbours_l = []
+    # Compare neighbor counts for sliding windows
     i_list = range(start_index + 400, start_index + END_OF_CYCLE_LIMIT, 10)
+    neighbor_counts = []
     for i in i_list:
-        tree_next_points = KDTree(trajectory[i: i + WINDOW_DETECTION, :])
-        nb_neighbours = tree_next_points.count_neighbors(tree_trajectory, close_distance_threshold)
-        nb_neighbours_l.append(nb_neighbours)
+        next_tree = KDTree(trajectory[i:i + WINDOW_DETECTION])
+        count = next_tree.count_neighbors(ref_tree, close_distance_threshold)
+        neighbor_counts.append(count)
 
-    # Identify peaks in neighbor count, indicating periodic overlap of cycles
-    threshold = 2  # Initial prominence threshold
+    # Find peaks in neighbor counts (cycle overlaps)
+    threshold = 2
     peaks = []
-    while len(peaks) == 0:  # Adjust threshold until a peak is found
-        peaks = find_peaks(nb_neighbours_l, prominence=WINDOW_DETECTION / threshold)[0]
+    while len(peaks) == 0:
+        peaks = find_peaks(neighbor_counts, prominence=WINDOW_DETECTION / threshold)[0]
         threshold *= 2
 
-    # Measure peak widths to determine where cycles most likely end
-    widths, _, _, right_ips = peak_widths(nb_neighbours_l, peaks, rel_height=0.5)
+    _, _, _, right_ips = peak_widths(neighbor_counts, peaks, rel_height=0.5)
     right_ips = right_ips.astype(int)
 
-    end_index = peaks[0]
+    # Refine peak selection
     peak_ind = 0
-
-    # Refine peak selection to minimize false positives in cycle detection
     while peak_ind < len(peaks) - 1:
-        if np.min(nb_neighbours_l[: peaks[peak_ind]]) > 2 * np.min(nb_neighbours_l):
+        if np.min(neighbor_counts[:peaks[peak_ind]]) > 2 * np.min(neighbor_counts):
             peak_ind += 1
         else:
             break
-
-    # Further refine peak selection based on local maxima
     for k in range(peak_ind, min(peak_ind + 3, len(peaks))):
-        if nb_neighbours_l[peaks[k]] > nb_neighbours_l[peaks[peak_ind]] * 1.5:
+        if neighbor_counts[peaks[k]] > 1.5 * neighbor_counts[peaks[peak_ind]]:
             peak_ind = k
 
-    # Define end of the cycle as the right boundary of the selected peak
     end_index = i_list[right_ips[peak_ind]]
-
     return start_index, end_index

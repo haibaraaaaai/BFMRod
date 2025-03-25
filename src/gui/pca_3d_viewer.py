@@ -1,9 +1,21 @@
+"""
+pca_3d_viewer.py – GUI for 3D visualization of PCA trajectories with reference cycles.
+"""
+
 from PyQt6 import QtWidgets, QtCore
 from PyQt6.QtGui import QShortcut, QKeySequence
 import pyqtgraph.opengl as gl
 
 
 class PCA3DViewer(QtWidgets.QMainWindow):
+    """
+    GUI for viewing 3D PCA trajectory segments overlaid with closest reference cycles.
+
+    Features:
+        - 3D OpenGL visualization of PCA segments
+        - Overlay nearest reference cycle
+        - Navigate between segments using arrow keys
+    """
     def __init__(self, pca_segments, ref_cycles):
         super().__init__()
 
@@ -14,6 +26,7 @@ class PCA3DViewer(QtWidgets.QMainWindow):
         self.ref_cycles = ref_cycles      # List of (timestamp, ref_cycle)
         self.pca_index = 0
 
+        # --- 3D View Setup ---
         self.view = gl.GLViewWidget()
         self.view.opts['distance'] = 10
         self.setCentralWidget(self.view)
@@ -26,28 +39,38 @@ class PCA3DViewer(QtWidgets.QMainWindow):
         self.ref_line = None
         self.plot_pca_segment(self.pca_segments[self.pca_index])
 
+        # --- Navigation Shortcuts ---
         QShortcut(QKeySequence(QtCore.Qt.Key.Key_Left), self).activated.connect(self.prev_segment)
         QShortcut(QKeySequence(QtCore.Qt.Key.Key_Right), self).activated.connect(self.next_segment)
 
     def plot_pca_segment(self, segment_data):
+        """
+        Plot the given PCA segment and overlay its nearest reference cycle.
+
+        Args:
+            segment_data (tuple): (X_pca, seg_start_time, seg_end_time)
+        """
         try:
             X_pca, seg_start_time, seg_end_time = segment_data
 
-            # Safe removal of previous PCA line
+            # Remove previous PCA line safely
             if self.pca_line and self.pca_line in self.view.items:
                 self.view.removeItem(self.pca_line)
 
-            # Safe removal of previous reference line
+            # Remove previous reference line safely
             if self.ref_line and self.ref_line in self.view.items:
                 self.view.removeItem(self.ref_line)
 
-            # Plot new PCA segment
+            # Plot PCA trajectory segment
             self.pca_line = gl.GLLinePlotItem(pos=X_pca, color=(0, 0, 1, 1), width=2.0, antialias=True)
             self.view.addItem(self.pca_line)
 
-            # Find reference cycle with closest timestamp to segment center time
+            # Find reference cycle closest in time to segment midpoint
             segment_center_time = (seg_start_time + seg_end_time) / 2
-            closest_ref_cycle = min(self.ref_cycles, key=lambda rc: abs(rc[0] - segment_center_time))[1] if self.ref_cycles else None
+            closest_ref_cycle = min(
+                self.ref_cycles,
+                key=lambda rc: abs(rc[0] - segment_center_time)
+            )[1] if self.ref_cycles else None
 
             if closest_ref_cycle is not None:
                 self.ref_line = gl.GLLinePlotItem(pos=closest_ref_cycle, color=(1, 0, 0, 1), width=2.0, antialias=True)
@@ -62,11 +85,13 @@ class PCA3DViewer(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.critical(self, "Plotting Error", f"Error plotting PCA segment:\n{e}")
 
     def prev_segment(self):
+        """Navigate to the previous PCA segment."""
         if self.pca_index > 0:
             self.pca_index -= 1
             self.plot_pca_segment(self.pca_segments[self.pca_index])
 
     def next_segment(self):
+        """Navigate to the next PCA segment."""
         if self.pca_index < len(self.pca_segments) - 1:
             self.pca_index += 1
             self.plot_pca_segment(self.pca_segments[self.pca_index])
