@@ -19,7 +19,7 @@ class PCASpeedViewer(QMainWindow):
         - Applies smoothing and decimation
         - Zoomable, scrollable plot with shortcuts
     """
-    def __init__(self, phase_linearized, phase_time, sampling_rate, decimation_factor=100, smoothing_window=51):
+    def __init__(self, phase, phase_time, sampling_rate, decimation_factor=100, smoothing_window=51):
         super().__init__()
 
         self.setWindowTitle("Instantaneous Frequency Viewer")
@@ -31,7 +31,7 @@ class PCASpeedViewer(QMainWindow):
         self.smoothing_window = smoothing_window
 
         # --- Compute frequency ---
-        self.frequency = self.compute_frequency(phase_linearized)
+        self.frequency = self.compute_frequency(phase)
         self.time_processed, self.freq_processed = self.process_frequency()
 
         # --- Parameters ---
