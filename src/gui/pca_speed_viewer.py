@@ -19,20 +19,19 @@ class PCASpeedViewer(QMainWindow):
         - Applies smoothing and decimation
         - Zoomable, scrollable plot with shortcuts
     """
-    def __init__(self, phase_data, phase_time, sampling_rate, decimation_factor=100, smoothing_window=51):
+    def __init__(self, phase_linearized, phase_time, sampling_rate, decimation_factor=100, smoothing_window=51):
         super().__init__()
 
         self.setWindowTitle("Instantaneous Frequency Viewer")
         self.setGeometry(150, 150, 1000, 500)
 
-        self.phase = phase_data
         self.time_full = phase_time
-        self.sampling_rate = sampling_rate
+        self.dt = sampling_rate
         self.decimation_factor = decimation_factor
         self.smoothing_window = smoothing_window
 
         # --- Compute frequency ---
-        self.time, self.frequency = self.compute_frequency()
+        self.frequency = self.compute_frequency(phase_linearized)
         self.time_processed, self.freq_processed = self.process_frequency()
 
         # --- Parameters ---
@@ -71,40 +70,25 @@ class PCASpeedViewer(QMainWindow):
 
         self.update_window()
 
-    def compute_frequency(self):
+    def compute_frequency(self, phase):
         """Compute instantaneous frequency from unwrapped phase."""
-        dt = self.sampling_rate
-
-        # Smooth phase to reduce noise before differentiation
-        phase_smoothed = savgol_filter(self.phase, 51, polyorder=3)
-        phase_unwrapped = np.unwrap(phase_smoothed)
-
-        # Compute angular velocity (rad/s)
-        speed = np.gradient(phase_unwrapped, dt)
-
-        # Smooth angular velocity
-        speed_smoothed = savgol_filter(speed, 51, polyorder=3)
-
-        # Convert to Hz
-        freq = speed_smoothed / (2 * np.pi)
-        return self.time_full, freq
+        speed = np.gradient(phase, self.dt)
+        speed_smoothed = savgol_filter(speed, self.smoothing_window, polyorder=3)
+        return speed_smoothed / (2 * np.pi)
 
     def process_frequency(self):
         """Decimate and smooth frequency for efficient plotting."""
         freq_dec = decimate(self.frequency, self.decimation_factor, zero_phase=True)
-        time_dec = self.time[::self.decimation_factor]
-        freq_smooth = savgol_filter(freq_dec, self.smoothing_window, polyorder=3)
-        freq_smooth = np.clip(freq_smooth, 0, None)  # Eliminate negatives
-        return time_dec, freq_smooth
+        time_dec = self.time_full[::self.decimation_factor]
+        freq_clipped = np.clip(freq_dec, 0, None)
+        return time_dec, freq_clipped
 
     def update_window(self):
         """Update visible plot window based on current slider value."""
         self.start_index = self.slider.value()
         end_index = min(self.start_index + self.window_size, len(self.time_processed))
-
         t_window = self.time_processed[self.start_index:end_index]
         f_window = self.freq_processed[self.start_index:end_index]
-
         self.plot_curve.setData(t_window, f_window)
         self.plot_widget.setXRange(t_window[0], t_window[-1], padding=0)
 

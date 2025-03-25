@@ -27,7 +27,7 @@ def linearizing_speed_function(phir, speeds, N=500, fftfilter=1, mfilter=7, show
     if show:
         plt.figure()
         plt.plot(
-            np.array(m[1:]) % (2 * np.pi),
+            np.array(nn[1:]) % (2 * np.pi),
             speeds,
             ".",
             markersize=1,

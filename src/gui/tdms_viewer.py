@@ -2,7 +2,6 @@
 tdms_viewer.py – Main GUI window for viewing TDMS data, performing PCA, and visualizing phase/speed.
 """
 
-import sys
 import numpy as np
 import pyqtgraph as pg
 
@@ -20,6 +19,8 @@ from processing.tdms_loader import load_tdms_data
 from processing.pca_module import apply_pca, detect_cycle_bounds
 from processing.phase_tracking import assign_phase_indices
 from utils.smoothing import smooth_data_with_convolution, smooth_trajectory
+from utils.filter_utils import chi2_filter_njit_slope_steps
+from utils.linearizing_function import linearizing_speed_function
 
 from gui.pca_3d_viewer import PCA3DViewer
 from gui.phase_viewer import PhaseViewer
@@ -243,10 +244,18 @@ class TDMSViewer(QMainWindow):
             smooth_ref_cycle = self._compute_initial_ref_cycle(X_pca[ref_start:ref_end])
 
             # --- Track Phases and Update Ref Cycle ---
-            updated_refs, phase, phase_time = self._track_phases(X_pca, smooth_ref_cycle, start_idx, ref_start)
+            # Here linearizing is used to smooth out the speed so that it would be more uniform for each cycle.
+            updated_refs, phase_chi2, phase_time = self._track_phases(X_pca, smooth_ref_cycle, start_idx, ref_start)
+            dt = 1 / SAMPLING_RATE
+            raw_speed = np.gradient(phase_chi2, dt)
+            phi_wrapped_chi2 = phase_chi2 % (2 * np.pi)
+            # the plotting within linearizing_function.py seems not to be working, so show=0
+            f = linearizing_speed_function(phi_wrapped_chi2, raw_speed, N=500, fftfilter=1, mfilter=7, show=0)
+            phi_corrected = f(phi_wrapped_chi2)
+            phase_chi2_linearized = np.unwrap(phi_corrected)
 
             # --- Show Visualizations ---
-            self.phase_data = phase
+            self.phase_data = phase_chi2_linearized
             self.phase_time = phase_time
 
             if pca_segments:
@@ -257,13 +266,11 @@ class TDMSViewer(QMainWindow):
                 self.phase_viewer.show()
 
             try:
-                self.speed_viewer = PCASpeedViewer(self.phase_data, self.phase_time, sampling_rate=1 / SAMPLING_RATE)
+                self.speed_viewer = PCASpeedViewer(self.phase_data, self.phase_time, dt)
                 self.speed_viewer.show()
             except Exception as e:
                 self.error_label.setText(f"⚠ PCA error: {e}")
 
-        except ValueError:
-            self.error_label.setText("⚠ Invalid PCA input.")
         except Exception as e:
             self.error_label.setText(f"⚠ PCA error: {e}")
 
@@ -339,9 +346,13 @@ class TDMSViewer(QMainWindow):
 
         phase = phase0 / len(smooth_ref_cycle) * 2 * np.pi
         phase = np.unwrap(phase)
+
+        # Experimental: Chi2 Filtering can smooth phase data while perserving changes.
+        # Computation heavy, so swap to Savitzky–Golay filter if that's too slow.
+        phase_chi2 = chi2_filter_njit_slope_steps(phase, sigma=0.05)
         phase_time = self.timestamps[start_idx : start_idx + len(phase)]
 
-        return updated_refs, phase, phase_time
+        return updated_refs, phase_chi2, phase_time
 
     # --- Navigation Shortcuts ---
     def move_window_left(self):

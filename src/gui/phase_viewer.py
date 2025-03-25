@@ -43,7 +43,7 @@ class PhaseViewer(QMainWindow):
         self.plot_widget.showGrid(x=True, y=True)
         self.plot_widget.setBackground('w')
 
-        self.curve = self.plot_widget.plot(pen=pg.mkPen(color='b', width=1))
+        self.curve = self.plot_widget.plot(pen=pg.mkPen(color='r', width=1), name='Linearized Chi2 Phase')
 
         layout = QVBoxLayout()
         layout.addWidget(self.plot_widget)
