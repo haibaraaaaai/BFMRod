@@ -1,12 +1,8 @@
-PyQt6
-nptdms
 numpy
-matplotlib
 scipy
 scikit-learn
-numba
-pyqt6-tools ## for Qt Designer
-PyQt6-Charts 
+nptdms
 pyqtgraph
-PyOpenGL 
-PyOpenGL_accelerate
+PyQt6
+PyOpenGL
+numba

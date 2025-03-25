@@ -1,10 +1,22 @@
+"""
+phase_viewer.py – GUI for visualizing unwrapped phase over time.
+"""
+
 import numpy as np
 from PyQt6.QtWidgets import QMainWindow, QVBoxLayout, QWidget, QSlider
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QShortcut, QKeySequence
 import pyqtgraph as pg
 
+
 class PhaseViewer(QMainWindow):
+    """
+    GUI for viewing phase evolution over time.
+
+    Features:
+        - Scrollable, zoomable phase plot
+        - Keyboard shortcuts for navigation
+    """
     def __init__(self, time_vector, phase_vector):
         super().__init__()
 
@@ -15,20 +27,24 @@ class PhaseViewer(QMainWindow):
         self.phase = phase_vector
 
         # --- Parameters ---
-        self.window_size = 10000
+        self.window_size = 10_000
         self.start_index = 0
-        self.min_window_size = 1000
-        self.window_step_fraction = 0.1
+        self.min_window_size = 1_000
 
-        # --- Plot Widget ---
+        # --- Layout & Plot Setup ---
+        self._init_layout()
+        self._init_shortcuts()
+        self.update_window()
+
+    def _init_layout(self):
         self.plot_widget = pg.PlotWidget(title="Phase (radians) vs Time (s)")
         self.plot_widget.setLabel('left', "Phase (rad)")
         self.plot_widget.setLabel('bottom', "Time (s)")
         self.plot_widget.showGrid(x=True, y=True)
-        self.plot_widget.setBackground('w')  # Optional: white background
+        self.plot_widget.setBackground('w')
+
         self.curve = self.plot_widget.plot(pen=pg.mkPen(color='b', width=1))
 
-        # --- Layout ---
         layout = QVBoxLayout()
         layout.addWidget(self.plot_widget)
 
@@ -44,13 +60,11 @@ class PhaseViewer(QMainWindow):
         container.setLayout(layout)
         self.setCentralWidget(container)
 
-        # --- Keyboard Shortcuts ---
+    def _init_shortcuts(self):
         QShortcut(QKeySequence(Qt.Key.Key_Left), self).activated.connect(self.move_window_left)
         QShortcut(QKeySequence(Qt.Key.Key_Right), self).activated.connect(self.move_window_right)
         QShortcut(QKeySequence(Qt.Key.Key_Up), self).activated.connect(self.increase_window_size)
         QShortcut(QKeySequence(Qt.Key.Key_Down), self).activated.connect(self.decrease_window_size)
-
-        self.update_window()
 
     def update_window(self):
         self.start_index = self.slider.value()
@@ -72,13 +86,13 @@ class PhaseViewer(QMainWindow):
         self.slider.setValue(min(len(self.time) - self.window_size, self.start_index + step_size))
 
     def increase_window_size(self):
-        step_size = max(100, int(self.window_size * 0.2))  # Minimum change 100 points
+        step_size = max(100, int(self.window_size * 0.2))
         self.window_size = min(len(self.time), self.window_size + step_size)
         self.slider.setMaximum(len(self.time) - self.window_size)
         self.update_window()
 
     def decrease_window_size(self):
-        step_size = max(100, int(self.window_size * 0.2))  # Same proportional change
+        step_size = max(100, int(self.window_size * 0.2))
         self.window_size = max(self.min_window_size, self.window_size - step_size)
         self.slider.setMaximum(len(self.time) - self.window_size)
         self.update_window()

@@ -1,3 +1,7 @@
+"""
+pca_speed_viewer.py – GUI for visualizing instantaneous frequency derived from unwrapped phase.
+"""
+
 import numpy as np
 import pyqtgraph as pg
 from PyQt6.QtWidgets import QMainWindow, QVBoxLayout, QWidget, QSlider
@@ -5,7 +9,16 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QShortcut, QKeySequence
 from scipy.signal import decimate, savgol_filter
 
+
 class PCASpeedViewer(QMainWindow):
+    """
+    GUI for viewing instantaneous frequency over time from phase data.
+
+    Features:
+        - Computes frequency from phase derivative
+        - Applies smoothing and decimation
+        - Zoomable, scrollable plot with shortcuts
+    """
     def __init__(self, phase_data, phase_time, sampling_rate, decimation_factor=100, smoothing_window=51):
         super().__init__()
 
@@ -23,17 +36,16 @@ class PCASpeedViewer(QMainWindow):
         self.time_processed, self.freq_processed = self.process_frequency()
 
         # --- Parameters ---
-        self.window_size = 25000
+        self.window_size = 25_000
         self.start_index = 0
-        self.window_step_fraction = 0.1
         self.min_window_size = 100
 
-        # --- PlotWidget ---
+        # --- PlotWidget Setup ---
         self.plot_widget = pg.PlotWidget()
         self.plot_widget.setLabel('left', "Frequency", units='Hz')
         self.plot_widget.setLabel('bottom', "Time", units='s')
-        self.plot_widget.setYRange(0, 400)  # Fixed Y-axis range
-        self.plot_curve = self.plot_widget.plot(pen='b')  # Blue line
+        self.plot_widget.setYRange(0, 400)
+        self.plot_curve = self.plot_widget.plot(pen='b')
 
         # --- Layout ---
         layout = QVBoxLayout()
@@ -60,16 +72,17 @@ class PCASpeedViewer(QMainWindow):
         self.update_window()
 
     def compute_frequency(self):
+        """Compute instantaneous frequency from unwrapped phase."""
         dt = self.sampling_rate
 
-        # Smooth phase before differentiation
+        # Smooth phase to reduce noise before differentiation
         phase_smoothed = savgol_filter(self.phase, 51, polyorder=3)
         phase_unwrapped = np.unwrap(phase_smoothed)
 
-        # Compute gradient (angular velocity)
+        # Compute angular velocity (rad/s)
         speed = np.gradient(phase_unwrapped, dt)
 
-        # Smooth speed post-differentiation
+        # Smooth angular velocity
         speed_smoothed = savgol_filter(speed, 51, polyorder=3)
 
         # Convert to Hz
@@ -77,13 +90,15 @@ class PCASpeedViewer(QMainWindow):
         return self.time_full, freq
 
     def process_frequency(self):
+        """Decimate and smooth frequency for efficient plotting."""
         freq_dec = decimate(self.frequency, self.decimation_factor, zero_phase=True)
         time_dec = self.time[::self.decimation_factor]
         freq_smooth = savgol_filter(freq_dec, self.smoothing_window, polyorder=3)
-        freq_smooth = np.clip(freq_smooth, 0, None)  # Clip negatives
+        freq_smooth = np.clip(freq_smooth, 0, None)  # Eliminate negatives
         return time_dec, freq_smooth
 
     def update_window(self):
+        """Update visible plot window based on current slider value."""
         self.start_index = self.slider.value()
         end_index = min(self.start_index + self.window_size, len(self.time_processed))
 
