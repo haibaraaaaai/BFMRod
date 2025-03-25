@@ -12,14 +12,9 @@ Development To-Do List
         Re-compute phase/speed.
         Optional: tagging (e.g., "test", "good").
 
-3. Data Handling / Optimization
-    Cache computed data in memory.
+    Resolve .3f precision issue from line edit input.
 
-    Resolve .3f precision issue.
-
-    Smooth phase data. Speed at different phases?
-
-4. Ref Cycle Logic
+34. Ref Cycle Logic
     Dynamic Threshold Trigger for ref cycle update:
         Trigger update only if phase error or distance exceeds threshold.
         Input timestamp → run detect_cycle_bounds() around it.
@@ -31,31 +26,24 @@ Development To-Do List
     
     Index input may not align well with cycle — prefer timestamps.
 
+    Confirm initial ref cycle? Then use initial ref cycle average disstances to decide whether or not to automatically update.
+
+    Slider for index adjustment with real time tracking of index on screen.
+
     GUI must enable this from PCA 3D viewer.
         Add manual ref cycle button (detect cycle from current window, plot immediately).
         Update all future ref cycles based on this new one.
         Maintain a list of added ref cycles for toggle/remove.
 
-5. Code Maintenance / Testing
-    Test modulation algorithms.
-        Enable module reloading for function updates.
+    Backward penalty for indices more than one or two units away?
 
-    Test numba acceleration.
-
-    Exponential weighting for neighboring search (λ = 40).
-        Does not work well, lead to traj shrinking and getting stuck on neighburing phases.
-
-6. Other Ideas
+4. Other Ideas
     Investigate anisotropy vs total intensity (normalize XYZ to [-1, 1]).
 
     Check transient pauses paper for pause detection.
 
-    Recent file memory.
-
     Save file data.
-
-    Try to remove pauses then just count every change in 2pi as one rev and find speed?
 
     Load new tdms in tdms viewer?
 
-    Re-modulate tdms viewer
+    Toggle speed calculation and rev_window input.
