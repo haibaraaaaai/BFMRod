@@ -53,3 +53,7 @@ Development To-Do List
     Recent file memory.
 
     Save file data.
+
+    Check to see if linearization remove pauses (not in a nice way as we will not know it happened?)
+
+    Try to remove pauses then just count every change in 2pi as one rev and find speed?
