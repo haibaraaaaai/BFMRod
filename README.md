@@ -2,6 +2,8 @@
 
 A graphical tool for visualizing TDMS signal data, performing PCA-based phase analysis, and viewing instantaneous frequency in 2D/3D.
 
+The last working version is the one with commit message "Cleaned up comments and restructured for easy use. "
+
 ---
 
 ## Features
