@@ -12,15 +12,11 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QShortcut, QKeySequence
 
-from scipy.signal import decimate, savgol_filter
+from scipy.signal import decimate
 
-from config import SAMPLING_RATE, CONVOLUTION_WINDOW, REFERENCE_NUM_POINTS
+from config import SAMPLING_RATE
 from processing.tdms_loader import load_tdms_data
-from processing.pca_module import apply_pca, detect_cycle_bounds
-from processing.phase_tracking import assign_phase_indices
-from utils.smoothing import smooth_data_with_convolution, smooth_trajectory
-# from utils.filter_utils import chi2_filter_njit_slope_steps
-from utils.linearizing_function import linearizing_speed_function
+from processing.pca_module import run_pca_workflow
 
 from gui.pca_3d_viewer import PCA3DViewer
 from gui.phase_viewer import PhaseViewer
@@ -211,50 +207,25 @@ class TDMSViewer(QMainWindow):
             pca_start_time = float(self.pca_start_input.text())
             pca_end_time = float(self.pca_end_input.text())
             segment_duration = float(self.segment_size_input.text())
+            closure_threshold = int(self.closure_threshold_input.text())
 
             if pca_start_time < self.timestamps[0] or pca_end_time > self.timestamps[-1]:
                 self.error_label.setText("⚠ PCA time range out of bounds.")
                 return
 
-            # --- Calculate Segment Parameters ---
-            segment_size = int(segment_duration * SAMPLING_RATE)
-            total_time = pca_end_time - pca_start_time
-            expected_segments = int(total_time / segment_duration)
+            results = run_pca_workflow(
+                self.data,
+                self.timestamps,
+                pca_start_time,
+                pca_end_time,
+                segment_duration,
+                closure_threshold
+            )
 
-            pad_samples = CONVOLUTION_WINDOW - 1
-            total_samples_needed = expected_segments * segment_size
-            raw_end_sample = total_samples_needed + pad_samples
-
-            start_idx = np.searchsorted(self.timestamps, pca_start_time)
-            end_idx = min(start_idx + raw_end_sample, len(self.timestamps))
-
-            # --- Fetch and Smooth Data ---
-            raw_signals = self.data[start_idx:end_idx, :]
-            smoothed_signals = smooth_data_with_convolution(raw_signals)
-
-            # --- Perform PCA ---
-            X_pca, _ = apply_pca(smoothed_signals)
-
-            # --- Segment PCA Data ---
-            pca_segments = self._segment_pca_data(X_pca, start_idx, pad_samples, segment_size, expected_segments)
-
-            # --- Detect Reference Cycle ---
-            closure_threshold = int(self.closure_threshold_input.text())
-            ref_start, ref_end = detect_cycle_bounds(X_pca, closure_threshold)
-            smooth_ref_cycle = self._compute_initial_ref_cycle(X_pca[ref_start:ref_end])
-
-            # --- Track Phases and Update Ref Cycle ---
-            # Here linearizing is used to smooth out the speed so that it would be more uniform for each cycle.
-            updated_refs, phase, phase_time = self._track_phases(X_pca, smooth_ref_cycle, start_idx, ref_start)
-            dt = 1 / SAMPLING_RATE
-
-            phase = savgol_filter(phase, window_length=51, polyorder=3)
-            raw_speed = np.gradient(phase, dt)
-            phi_wrapped = phase % (2 * np.pi)
-            # the plotting within linearizing_function.py seems not to be working, so show=0
-            f = linearizing_speed_function(phi_wrapped, raw_speed, N=500, fftfilter=1, mfilter=7, show=0)
-            phi_corrected = f(phi_wrapped)
-            phase = np.unwrap(phi_corrected)
+            pca_segments = results["pca_segments"]
+            updated_refs = results["updated_refs"]
+            phase = results["phase"]
+            phase_time = results["phase_time"]
 
             # --- Show Visualizations ---
             self.phase_data = phase
@@ -268,94 +239,13 @@ class TDMSViewer(QMainWindow):
                 self.phase_viewer.show()
 
             try:
-                self.speed_viewer = PCASpeedViewer(self.phase_data, self.phase_time, dt)
+                self.speed_viewer = PCASpeedViewer(self.phase_data, self.phase_time, 1/SAMPLING_RATE)
                 self.speed_viewer.show()
             except Exception as e:
                 self.error_label.setText(f"⚠ PCA error: {e}")
 
         except Exception as e:
             self.error_label.setText(f"⚠ PCA error: {e}")
-
-    def _segment_pca_data(self, X_pca, start_idx, pad_samples, segment_size, expected_segments):
-        """Divide PCA data into 1-second segments for visualization."""
-        pca_segments = []
-        for seg_idx in range(expected_segments):
-            seg_start = seg_idx * segment_size
-            seg_end = seg_start + segment_size
-            if seg_end > X_pca.shape[0]:
-                break
-            segment_data = X_pca[seg_start:seg_end]
-            seg_start_time = self.timestamps[start_idx + pad_samples + seg_start]
-            seg_end_time = self.timestamps[start_idx + pad_samples + seg_end - 1]
-            pca_segments.append((segment_data, seg_start_time, seg_end_time))
-        return pca_segments
-
-    def _compute_initial_ref_cycle(self, initial_cycle):
-        """Compute smoothed reference cycle from initial detected cycle."""
-        M = len(initial_cycle)
-        avg_signal_d_av = np.zeros([M // REFERENCE_NUM_POINTS, 3])
-        for i in range(M // REFERENCE_NUM_POINTS):
-            avg_signal_d_av[i] = np.mean(initial_cycle[i * REFERENCE_NUM_POINTS : (i + 1) * REFERENCE_NUM_POINTS], axis=0)
-        smooth_ref_cycle = smooth_trajectory(avg_signal_d_av)
-        return smooth_ref_cycle
-
-    def _track_phases(self, X_pca, smooth_ref_cycle, start_idx, ref_start):
-        """Assign phases, update reference cycles, and return unwrapped phase over time."""
-        update_interval_samples = SAMPLING_RATE
-        total_samples_pca = X_pca.shape[0]
-        updated_refs = [(self.timestamps[start_idx + ref_start], smooth_ref_cycle)]
-
-        i = 0
-        phase0 = np.array([], dtype=np.int32)
-        prev_phase = None
-
-        while i < total_samples_pca:
-            segment = X_pca[i : min(i + update_interval_samples, total_samples_pca)]
-            if segment.shape[0] == 0:
-                break
-
-            phase_indices = assign_phase_indices(segment, smooth_ref_cycle, prev_phase)
-
-            # Phase-bin averaging (using last fraction of data)
-            phase_bins = [[] for _ in range(len(smooth_ref_cycle))]
-            fraction = 0.025
-            cut_start = int(len(segment) * (1 - fraction))
-            for idx in range(cut_start, len(segment)):
-                phase_bins[phase_indices[idx]].append(segment[idx])
-
-            # Interpolate missing phases
-            for p_idx in range(len(phase_bins)):
-                if not phase_bins[p_idx]:
-                    left = (p_idx - 1) % len(smooth_ref_cycle)
-                    right = (p_idx + 1) % len(smooth_ref_cycle)
-                    while not phase_bins[left]:
-                        left = (left - 1) % len(smooth_ref_cycle)
-                    while not phase_bins[right]:
-                        right = (right + 1) % len(smooth_ref_cycle)
-                    interpolated = 0.5 * (np.mean(phase_bins[left], axis=0) + np.mean(phase_bins[right], axis=0))
-                    phase_bins[p_idx] = [interpolated]
-
-            # Blend with previous ref cycle
-            new_ref = np.array([np.median(points, axis=0) for points in phase_bins])
-            ALPHA = 0.2
-            blended_ref = (1 - ALPHA) * smooth_ref_cycle + ALPHA * new_ref
-            smooth_ref_cycle = smooth_trajectory(blended_ref)
-            updated_refs.append((self.timestamps[start_idx + i], smooth_ref_cycle))
-
-            i += update_interval_samples
-            phase0 = np.concatenate((phase0, phase_indices))
-            prev_phase = phase_indices[-1]
-
-        phase = phase0 / len(smooth_ref_cycle) * 2 * np.pi
-        phase = np.unwrap(phase)
-
-        # Experimental: Chi2 Filtering can smooth phase data while perserving changes.
-        # Computation heavy, so swap to Savitzky–Golay filter if that's too slow.
-        # phase = chi2_filter_njit_slope_steps(phase, sigma=0.05)
-
-        phase_time = self.timestamps[start_idx : start_idx + len(phase)]
-
-        return updated_refs, phase, phase_time
 
     # --- Navigation Shortcuts ---
     def move_window_left(self):
