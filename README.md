@@ -48,15 +48,15 @@ python -m main
    - Instantaneous frequency derived from phase.
 
 ## Quick PCA Testing (No GUI)
-If you wnat to quickly check the core PCA algorithm, check scripts/ folder which contains minimal working code:
-    pca.py:
-        Loads a .tdms file from the data/ folder.
-        Applies PCA and detects a reference cycle.
-        Assigns phase indices and tracks updates over time.
-        Saves the computed phase and summary plots to results/.
-    compute_speed.py
-        Loads the saved phase file from pca.py.
-        Computes instantaneous frequency from phase data.
-        Plots and saves the frequency trace.
-Make sure you update the file paths in each script to match your own .tdms data.
-Some algorithms are changed in src/ code, but the core idea of finding ref cycle and measuring speed from ref cycle is the same.
+1. If you wnat to quickly check the core PCA algorithm, check scripts/ folder which contains minimal working code:
+   - pca.py:
+      - Loads a .tdms file from the data/ folder.
+      - Applies PCA and detects a reference cycle.
+      - Assigns phase indices and tracks updates over time.
+      - Saves the computed phase and summary plots to results/.
+   - compute_speed.py:
+      - Loads the saved phase file from pca.py.
+      - Computes instantaneous frequency from phase data.
+      - Plots and saves the frequency trace.
+2. Make sure you update the file paths in each script to match your own .tdms data.
+3. Some algorithms are changed in src/ code, but the core idea of finding ref cycle and measuring speed from ref cycle is the same.
