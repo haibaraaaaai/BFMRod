@@ -169,61 +169,71 @@ def assign_phase_indices(trajectory, reference_cycle, prev_phase=None):
 
     return index
 
-def ref_cycle_update(X_pca, timestamps, smooth_ref_cycle, start_idx, ref_start):
-    """Assign phases, update reference cycles, and return unwrapped phase over time."""
-    update_interval_samples = SAMPLING_RATE
+def ref_cycle_update(X_pca, timestamps, computed_refs, update_interval, alpha=0.2, fraction=0.025):
+    """Assign phases, update reference cycles from computed_refs, return unwrapped phase over time."""
+    update_interval_samples = int(update_interval * SAMPLING_RATE)
     total_samples_pca = X_pca.shape[0]
-    updated_refs = [(timestamps[start_idx + ref_start], smooth_ref_cycle)]
 
-    i = 0
+    updated_refs = []
     phase0 = np.array([], dtype=np.int32)
     prev_phase = None
 
-    while i < total_samples_pca:
-        segment = X_pca[i : min(i + update_interval_samples, total_samples_pca)]
-        if segment.shape[0] == 0:
-            break
+    computed_refs_sorted = sorted(computed_refs, key=lambda r: r[0])
+    current_idx = 0
 
-        phase_indices = assign_phase_indices(segment, smooth_ref_cycle, prev_phase)
+    while current_idx < len(computed_refs_sorted):
+        ref_time, smooth_ref_cycle = computed_refs_sorted[current_idx]
+        start_idx = np.searchsorted(timestamps, ref_time)
+        if current_idx + 1 < len(computed_refs_sorted):
+            next_ref_time = computed_refs_sorted[current_idx + 1][0]
+            end_idx = np.searchsorted(timestamps, next_ref_time)
+        else:
+            end_idx = total_samples_pca + start_idx
 
-        # Phase-bin averaging (using last fraction of data)
-        phase_bins = [[] for _ in range(len(smooth_ref_cycle))]
-        fraction = 0.025
-        cut_start = int(len(segment) * (1 - fraction))
-        for idx in range(cut_start, len(segment)):
-            phase_bins[phase_indices[idx]].append(segment[idx])
+        i = 0
+        while i < (end_idx - start_idx):
+            seg_start = i
+            seg_end = min(i + update_interval_samples, end_idx - start_idx)
+            segment = X_pca[start_idx + seg_start : start_idx + seg_end]
+            if segment.shape[0] == 0:
+                break
 
-        # Interpolate missing phases
-        for p_idx in range(len(phase_bins)):
-            if not phase_bins[p_idx]:
-                left = (p_idx - 1) % len(smooth_ref_cycle)
-                right = (p_idx + 1) % len(smooth_ref_cycle)
-                while not phase_bins[left]:
-                    left = (left - 1) % len(smooth_ref_cycle)
-                while not phase_bins[right]:
-                    right = (right + 1) % len(smooth_ref_cycle)
-                interpolated = 0.5 * (np.mean(phase_bins[left], axis=0) + np.mean(phase_bins[right], axis=0))
-                phase_bins[p_idx] = [interpolated]
+            phase_indices = assign_phase_indices(segment, smooth_ref_cycle, prev_phase)
 
-        # Blend with previous ref cycle
-        new_ref = np.array([np.median(points, axis=0) for points in phase_bins])
-        ALPHA = 0.2
-        blended_ref = (1 - ALPHA) * smooth_ref_cycle + ALPHA * new_ref
-        smooth_ref_cycle = smooth_trajectory(blended_ref)
-        updated_refs.append((timestamps[start_idx + i], smooth_ref_cycle))
+            phase_bins = [[] for _ in range(len(smooth_ref_cycle))]
+            cut_start = int(len(segment) * (1 - fraction))
+            for idx in range(cut_start, len(segment)):
+                phase_bins[phase_indices[idx]].append(segment[idx])
 
-        i += update_interval_samples
-        phase0 = np.concatenate((phase0, phase_indices))
-        prev_phase = phase_indices[-1]
+            # Interpolate missing phases
+            for p_idx in range(len(phase_bins)):
+                if not phase_bins[p_idx]:
+                    left = (p_idx - 1) % len(smooth_ref_cycle)
+                    right = (p_idx + 1) % len(smooth_ref_cycle)
+                    while not phase_bins[left]:
+                        left = (left - 1) % len(smooth_ref_cycle)
+                    while not phase_bins[right]:
+                        right = (right + 1) % len(smooth_ref_cycle)
+                    interpolated = 0.5 * (
+                        np.mean(phase_bins[left], axis=0) + np.mean(phase_bins[right], axis=0)
+                    )
+                    phase_bins[p_idx] = [interpolated]
+
+            # Blend with previous ref cycle
+            new_ref = np.array([np.median(points, axis=0) for points in phase_bins])
+            blended_ref = (1 - alpha) * smooth_ref_cycle + alpha * new_ref
+            smooth_ref_cycle = smooth_trajectory(blended_ref)
+            updated_refs.append((timestamps[start_idx + seg_start], smooth_ref_cycle))
+
+            i += update_interval_samples
+            phase0 = np.concatenate((phase0, phase_indices))
+            prev_phase = phase_indices[-1]
+
+        current_idx += 1
 
     phase = phase0 / len(smooth_ref_cycle) * 2 * np.pi
     phase = np.unwrap(phase)
-
-    # Experimental: Chi2 Filtering can smooth phase data while perserving changes.
-    # Computation heavy, so swap to Savitzky–Golay filter if that's too slow.
-    # phase = chi2_filter_njit_slope_steps(phase, sigma=0.05)
-
-    phase_time = timestamps[start_idx : start_idx + len(phase)]
+    phase_time = timestamps[:len(phase)]
 
     return updated_refs, phase, phase_time
 
