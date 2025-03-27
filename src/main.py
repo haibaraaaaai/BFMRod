@@ -1,17 +1,17 @@
 """
 main.py – Entry point to launch the GUI application.
 
-Currently launches MainWindow, which gives access to the TDMS viewer and related tools.
+Currently launches TDMSViewer, which gives access to the TDMS raw data and PCA entries.
 """
 
 import sys
 from PyQt6.QtWidgets import QApplication
-from gui.main_window import MainWindow
+from gui.tdms_viewer import TDMSViewer
 
 def main():
     app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
+    viewer = TDMSViewer()
+    viewer.show()
     sys.exit(app.exec())
 
 if __name__ == "__main__":

@@ -19,3 +19,7 @@ REFERENCE_NUM_POINTS = 200           # Number of interpolated points in referenc
 
 # ─── Phase Tracking ───────────────────────────────────────────────────
 CONTINUITY_CONSTRAINT = REFERENCE_NUM_POINTS // 10  # Neighborhood size for phase continuity search
+
+# ─── For PCA 3D Viewer ───────────────────────────────────────────────────
+DEFAULT_PCA_SEGMENT_DURATION = 1
+DEFAULT_CLOSURE_THRESHOLD = 40
