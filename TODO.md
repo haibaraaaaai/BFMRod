@@ -12,9 +12,7 @@ Development To-Do List
         Re-compute phase/speed.
         Optional: tagging (e.g., "test", "good").
 
-    Resolve .3f precision issue from line edit input.
-
-34. Ref Cycle Logic
+3. Ref Cycle Logic
     Dynamic Threshold Trigger for ref cycle update:
         Trigger update only if phase error or distance exceeds threshold.
         Input timestamp → run detect_cycle_bounds() around it.
@@ -44,6 +42,6 @@ Development To-Do List
 
     Save file data.
 
-    Load new tdms in tdms viewer?
-
     Toggle speed calculation and rev_window input.
+
+    Try Chi2 step finding.
