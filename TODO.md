@@ -1,6 +1,7 @@
 Development To-Do List
 1. Core Features & Enhancements
     Compare X_PCA[:, 0] vs smooth_loop[phase[:, 0]] across whole file.
+        Use as a parameter for auto-redetect-ref?
 
 2. GUI Plans
     Input indices or timestamps for manual ref cycle creation.
