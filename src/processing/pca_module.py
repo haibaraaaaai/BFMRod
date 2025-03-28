@@ -169,32 +169,32 @@ def assign_phase_indices(trajectory, reference_cycle, prev_phase=None):
 
     return index
 
-def ref_cycle_update(X_pca, timestamps, computed_refs, update_interval, alpha=0.2, fraction=0.025):
+def ref_cycle_update(X_pca, timestamps, computed_refs, pca_start_idx, update_interval, fraction=0.025, alpha=0.2):
     """Assign phases, update reference cycles from computed_refs, return unwrapped phase over time."""
-    update_interval_samples = int(update_interval * SAMPLING_RATE)
+    update_sample_size = int(update_interval * SAMPLING_RATE)
     total_samples_pca = X_pca.shape[0]
 
     updated_refs = []
     phase0 = np.array([], dtype=np.int32)
     prev_phase = None
 
-    computed_refs_sorted = sorted(computed_refs, key=lambda r: r[0])
+    computed_refs_sorted = sorted(computed_refs, key=lambda r: r[0])    
     current_idx = 0
 
     while current_idx < len(computed_refs_sorted):
-        ref_time, smooth_ref_cycle = computed_refs_sorted[current_idx]
-        start_idx = np.searchsorted(timestamps, ref_time)
+        ref_start_idx, smooth_ref_cycle = computed_refs_sorted[current_idx]
+        new_start_idx = ref_start_idx - pca_start_idx
         if current_idx + 1 < len(computed_refs_sorted):
-            next_ref_time = computed_refs_sorted[current_idx + 1][0]
-            end_idx = np.searchsorted(timestamps, next_ref_time)
+            next_ref_idx = computed_refs_sorted[current_idx + 1][0]
+            new_end_idx = next_ref_idx - pca_start_idx
         else:
-            end_idx = total_samples_pca + start_idx
+            new_end_idx = total_samples_pca - 1
 
         i = 0
-        while i < (end_idx - start_idx):
+        while i < (new_end_idx - new_start_idx):
             seg_start = i
-            seg_end = min(i + update_interval_samples, end_idx - start_idx)
-            segment = X_pca[start_idx + seg_start : start_idx + seg_end]
+            seg_end = min(i + update_sample_size, new_end_idx - new_start_idx)
+            segment = X_pca[new_start_idx + seg_start : new_start_idx + seg_end]
             if segment.shape[0] == 0:
                 break
 
@@ -223,9 +223,9 @@ def ref_cycle_update(X_pca, timestamps, computed_refs, update_interval, alpha=0.
             new_ref = np.array([np.median(points, axis=0) for points in phase_bins])
             blended_ref = (1 - alpha) * smooth_ref_cycle + alpha * new_ref
             smooth_ref_cycle = smooth_trajectory(blended_ref)
-            updated_refs.append((timestamps[start_idx + seg_start], smooth_ref_cycle))
+            updated_refs.append((ref_start_idx + seg_start, smooth_ref_cycle))
 
-            i += update_interval_samples
+            i += update_sample_size
             phase0 = np.concatenate((phase0, phase_indices))
             prev_phase = phase_indices[-1]
 
@@ -272,11 +272,11 @@ def run_pca_workflow(data, timestamps, start_time, end_time, segment_duration, c
     # Detect and build initial ref cycle
     ref_start, ref_end = detect_cycle_bounds(X_pca, closure_threshold)
     initial_cycle = X_pca[ref_start:ref_end]
-    M = len(initial_cycle)
-    avg_signal_d_av = np.zeros([M // REFERENCE_NUM_POINTS, 3])
-    for i in range(M // REFERENCE_NUM_POINTS):
-        avg_signal_d_av[i] = np.mean(initial_cycle[i * REFERENCE_NUM_POINTS : (i + 1) * REFERENCE_NUM_POINTS], axis=0)
-    smooth_ref_cycle = smooth_trajectory(avg_signal_d_av)
+    # M = len(initial_cycle)
+    # avg_signal_d_av = np.zeros([M // REFERENCE_NUM_POINTS, 3])
+    # for i in range(M // REFERENCE_NUM_POINTS):
+    #     avg_signal_d_av[i] = np.mean(initial_cycle[i * REFERENCE_NUM_POINTS : (i + 1) * REFERENCE_NUM_POINTS], axis=0)
+    smooth_ref_cycle = smooth_trajectory(initial_cycle)
 
     updated_refs, phase, phase_time = ref_cycle_update(X_pca, timestamps, smooth_ref_cycle, start_idx, ref_start)
 

@@ -8,8 +8,8 @@ import pyqtgraph.opengl as gl
 import numpy as np
 
 from processing.pca_module import apply_pca, detect_cycle_bounds, ref_cycle_update
-from utils.smoothing import smooth_trajectory
-from config import SAMPLING_RATE, REFERENCE_NUM_POINTS, DEFAULT_PCA_SEGMENT_DURATION, DEFAULT_CLOSURE_THRESHOLD
+from utils.smoothing import smooth_trajectory, smooth_data_with_convolution
+from config import SAMPLING_RATE, DEFAULT_PCA_SEGMENT_DURATION, DEFAULT_CLOSURE_THRESHOLD, CONVOLUTION_WINDOW
 
 
 class PCA3DViewer(QMainWindow):
@@ -19,7 +19,6 @@ class PCA3DViewer(QMainWindow):
         self.setGeometry(200, 200, 1000, 700)
 
         self.data = data
-        self.timestamps = timestamps
         self.segment_duration = DEFAULT_PCA_SEGMENT_DURATION
         self.segment_size = int(self.segment_duration * SAMPLING_RATE)
         self.closure_threshold = DEFAULT_CLOSURE_THRESHOLD
@@ -28,24 +27,22 @@ class PCA3DViewer(QMainWindow):
         self.fraction = 0.025
 
         # Run PCA on full data
-        self.pca, _ = apply_pca(self.data)
+        pca, _ = apply_pca(self.data)
+        self.pca = smooth_data_with_convolution(pca, CONVOLUTION_WINDOW)
+        self.timestamps = timestamps[:len(self.pca)]
 
         # Build reference cycle
         ref_start, ref_end = detect_cycle_bounds(self.pca, self.closure_threshold)
         initial_cycle = self.pca[ref_start:ref_end]
-        M = len(initial_cycle)
-        avg_signal_d_av = np.zeros([M // REFERENCE_NUM_POINTS, 3])
-        for i in range(M // REFERENCE_NUM_POINTS):
-            avg_signal_d_av[i] = np.mean(initial_cycle[i * REFERENCE_NUM_POINTS : (i + 1) * REFERENCE_NUM_POINTS], axis=0)
-        self.smooth_ref_cycle = smooth_trajectory(avg_signal_d_av)
-        self.ref_start_idx = ref_start
+        self.smooth_ref_cycle = smooth_trajectory(initial_cycle)
+        self.init_ref_start_idx = ref_start
 
         init_segment_data = self.pca[:self.segment_size]
         init_seg_start_time = self.timestamps[0]
         init_seg_end_time = self.timestamps[self.segment_size - 1]
         self.pca_segments = [(init_segment_data, init_seg_start_time, init_seg_end_time)]
-        self.updated_refs = [(init_seg_start_time, self.smooth_ref_cycle)]
-        self.detected_refs = [(init_seg_start_time, self.smooth_ref_cycle)]
+        self.computed_refs = [(ref_start, self.smooth_ref_cycle)]
+        self.updated_refs = []
         self.pca_index = 0
 
         self._init_ui()
@@ -95,7 +92,7 @@ class PCA3DViewer(QMainWindow):
         ]:
             fraction_alpha_layout.addWidget(widget)
 
-        self.recompute_button = QPushButton("Update Segments + Ref")
+        self.recompute_button = QPushButton("Set PCA Window + Update Ref")
         self.recompute_button.clicked.connect(self.recompute_segments_and_ref)
         button_layout.addWidget(self.recompute_button)
 
@@ -113,18 +110,20 @@ class PCA3DViewer(QMainWindow):
 
     def update_ref_selector(self):
         self.ref_selector.clear()
-        all_refs = self.detected_refs + self.updated_refs
-        for i, (t, _) in enumerate(all_refs):
-            self.ref_selector.addItem(f"Ref {i+1} @ {t:.2f}s")
+        for i, (idx, _) in enumerate(self.computed_refs):
+            timestamp = self.timestamps[idx]
+            self.ref_selector.addItem(f"Ref {i+1} @ {timestamp:.2f}s")
 
     def jump_to_ref_cycle(self, index):
-        all_refs = self.detected_refs + self.updated_refs
-        if index < 0 or index >= len(all_refs):
+        if index < 0 or index >= len(self.computed_refs):
             return
-        ref_time = all_refs[index][0]
+        ref_idx = self.computed_refs[index][0]
         closest_segment_index = min(
             range(len(self.pca_segments)),
-            key=lambda i: abs((self.pca_segments[i][1] + self.pca_segments[i][2]) / 2 - ref_time)
+            key=lambda i: abs(
+                np.searchsorted(self.timestamps, (self.pca_segments[i][1] + self.pca_segments[i][2]) / 2)
+                - ref_idx
+            )
         )
         self.pca_index = closest_segment_index
         self.plot_pca_segment(self.pca_segments[self.pca_index])
@@ -141,12 +140,13 @@ class PCA3DViewer(QMainWindow):
             self.pca_line = gl.GLLinePlotItem(pos=X_pca, color=(0, 0, 1, 1), width=2.0, antialias=True)
             self.view.addItem(self.pca_line)
 
+            self.all_refs = self.computed_refs + self.updated_refs
             segment_center_time = (seg_start_time + seg_end_time) / 2
-            all_refs = self.detected_refs + self.updated_refs
+            segment_center_idx = np.searchsorted(self.timestamps, segment_center_time)
             closest_ref_cycle = min(
-                all_refs,
-                key=lambda rc: abs(rc[0] - segment_center_time)
-            )[1] if all_refs else None
+                self.all_refs,
+                key=lambda rc: abs(rc[0] - segment_center_idx)
+            )[1] if self.all_refs else None
 
             if closest_ref_cycle is not None:
                 self.ref_line = gl.GLLinePlotItem(pos=closest_ref_cycle, color=(1, 0, 0, 1), width=2.0, antialias=True)
@@ -174,13 +174,13 @@ class PCA3DViewer(QMainWindow):
             if start_time >= end_time:
                 raise ValueError("Start time must be less than end time")
 
-            start_idx = np.searchsorted(self.timestamps, start_time, side='left')
-            end_idx = np.searchsorted(self.timestamps, end_time, side='right')
-            pca_window = self.pca[start_idx:end_idx]
+            pca_start_idx = np.searchsorted(self.timestamps, start_time, side='left')
+            pca_end_idx = np.searchsorted(self.timestamps, end_time, side='right')
+            windowed_pca = self.pca[pca_start_idx:pca_end_idx]
 
             updated_refs, _, _ = ref_cycle_update(
-                pca_window, self.timestamps[start_idx:end_idx], self.smooth_ref_cycle,
-                start_idx, self.ref_start_idx - start_idx,
+                windowed_pca, self.timestamps[pca_start_idx:pca_end_idx],
+                self.computed_refs, pca_start_idx,
                 update_interval=self.update_interval,
                 fraction=self.fraction,
                 alpha=self.alpha
@@ -189,12 +189,12 @@ class PCA3DViewer(QMainWindow):
             self.update_ref_selector()
 
             segments = []
-            for i in range(0, len(pca_window), self.segment_size):
-                seg = pca_window[i:i+self.segment_size]
+            for i in range(0, len(windowed_pca), self.segment_size):
+                seg = windowed_pca[i:i+self.segment_size]
                 if len(seg) < self.segment_size:
                     break
-                t0 = self.timestamps[start_idx + i]
-                t1 = self.timestamps[start_idx + i + self.segment_size - 1]
+                t0 = self.timestamps[pca_start_idx + i]
+                t1 = self.timestamps[pca_start_idx + i + self.segment_size - 1]
                 segments.append((seg, t0, t1))
 
             self.pca_segments = segments
