@@ -42,6 +42,9 @@ class PCA3DViewer(QMainWindow):
         self.updated_refs = []
         self.pca_index = 0
 
+        self.manual_start_idx = ref_start
+        self.manual_end_idx = ref_end
+
         self._init_ui()
         self.plot_pca_segment(self.pca_segments[0])
 
@@ -54,6 +57,7 @@ class PCA3DViewer(QMainWindow):
 
         self.pca_line = None
         self.ref_line = None
+        self.preview_line = None
 
         self.start_time_input = QLineEdit("0.0")
         self.end_time_input = QLineEdit(f"{self.timestamps[-1]:.3f}")
@@ -81,6 +85,15 @@ class PCA3DViewer(QMainWindow):
         self.add_button = QPushButton("Add Ref Cycle")
         self.add_button.clicked.connect(self.add_ref_cycle)
 
+        self.manual_start_input = QLineEdit(str(self.manual_start_idx))
+        self.manual_end_input = QLineEdit(str(self.manual_end_idx))
+        self.manual_start_label = QLabel("Start Index:")
+        self.manual_end_label = QLabel("End Index:")
+        self.preview_button = QPushButton("Preview Manual Ref")
+        self.preview_button.clicked.connect(self.preview_manual_ref)
+        self.confirm_button = QPushButton("Confirm Manual Ref")
+        self.confirm_button.clicked.connect(self.confirm_manual_ref)
+
         button_layout = QHBoxLayout()
         for widget in [
             QLabel("Start Time:"), self.start_time_input, self.min_time_label,
@@ -98,6 +111,14 @@ class PCA3DViewer(QMainWindow):
         ]:
             redo_layout.addWidget(widget)
 
+        manual_layout = QHBoxLayout()
+        for widget in [
+            self.manual_start_label, self.manual_start_input,
+            self.manual_end_label, self.manual_end_input,
+            self.preview_button, self.confirm_button
+        ]:
+            manual_layout.addWidget(widget)
+
         fraction_alpha_layout = QHBoxLayout()
         for widget in [
             QLabel("Fraction:"), self.fraction_input,
@@ -114,6 +135,7 @@ class PCA3DViewer(QMainWindow):
         layout.addLayout(button_layout)
         layout.addLayout(fraction_alpha_layout)
         layout.addLayout(redo_layout)
+        layout.addLayout(manual_layout)
 
         container = QWidget()
         container.setLayout(layout)
@@ -121,6 +143,10 @@ class PCA3DViewer(QMainWindow):
 
         QShortcut(QKeySequence(QtCore.Qt.Key.Key_Left), self).activated.connect(self.prev_segment)
         QShortcut(QKeySequence(QtCore.Qt.Key.Key_Right), self).activated.connect(self.next_segment)
+        QShortcut(QKeySequence(QtCore.Qt.Key.Key_Up), self.manual_start_input).activated.connect(lambda: self._nudge_index(self.manual_start_input, 1))
+        QShortcut(QKeySequence(QtCore.Qt.Key.Key_Down), self.manual_start_input).activated.connect(lambda: self._nudge_index(self.manual_start_input, -1))
+        QShortcut(QKeySequence(QtCore.Qt.Key.Key_Up), self.manual_end_input).activated.connect(lambda: self._nudge_index(self.manual_end_input, 1))
+        QShortcut(QKeySequence(QtCore.Qt.Key.Key_Down), self.manual_end_input).activated.connect(lambda: self._nudge_index(self.manual_end_input, -1))
 
     def update_ref_selector(self):
         self.ref_selector.clear()
@@ -282,6 +308,43 @@ class PCA3DViewer(QMainWindow):
 
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Add Ref Error", f"Failed to add new ref cycle:\n{e}")
+
+    def _nudge_index(self, line_edit, delta):
+        try:
+            val = int(line_edit.text())
+            line_edit.setText(str(val + delta))
+        except ValueError:
+            pass
+
+    def preview_manual_ref(self):
+        try:
+            start_idx = int(self.manual_start_input.text())
+            end_idx = int(self.manual_end_input.text())
+            if start_idx < 0 or end_idx > len(self.pca) or start_idx >= end_idx:
+                return
+            ref = self.pca[start_idx:end_idx]
+            if self.preview_line and self.preview_line in self.view.items:
+                self.view.removeItem(self.preview_line)
+            self.preview_line = gl.GLLinePlotItem(pos=ref, color=(1, 0.5, 0, 1), width=2.0, antialias=True)
+            self.view.addItem(self.preview_line)
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Manual Preview Error", f"Failed to preview manual ref cycle:\n{e}")
+
+    def confirm_manual_ref(self):
+        try:
+            start_idx = int(self.manual_start_input.text())
+            end_idx = int(self.manual_end_input.text())
+            if start_idx < 0 or end_idx > len(self.pca) or start_idx >= end_idx:
+                return
+            ref = self.pca[start_idx:end_idx]
+            smooth_ref = smooth_trajectory(ref)
+            self.computed_refs.append((start_idx, smooth_ref))
+            if self.preview_line and self.preview_line in self.view.items:
+                self.view.removeItem(self.preview_line)
+            self.preview_line = None
+            self.recompute_segments_and_ref()
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Manual Confirm Error", f"Failed to confirm manual ref cycle:\n{e}")
 
     def prev_segment(self):
         if self.pca_index > 0:
