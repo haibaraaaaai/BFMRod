@@ -34,14 +34,13 @@ class PCA3DViewer(QMainWindow):
         # Build reference cycle
         ref_start, ref_end = detect_cycle_bounds(self.pca, self.closure_threshold)
         initial_cycle = self.pca[ref_start:ref_end]
-        self.smooth_ref_cycle = smooth_trajectory(initial_cycle)
-        self.init_ref_start_idx = ref_start
+        smooth_ref_cycle = smooth_trajectory(initial_cycle)
 
         init_segment_data = self.pca[:self.segment_size]
         init_seg_start_time = self.timestamps[0]
         init_seg_end_time = self.timestamps[self.segment_size - 1]
         self.pca_segments = [(init_segment_data, init_seg_start_time, init_seg_end_time)]
-        self.computed_refs = [(ref_start, self.smooth_ref_cycle)]
+        self.computed_refs = [(ref_start, smooth_ref_cycle)]
         self.updated_refs = []
         self.pca_index = 0
 
