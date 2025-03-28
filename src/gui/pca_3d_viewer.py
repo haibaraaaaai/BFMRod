@@ -75,6 +75,9 @@ class PCA3DViewer(QMainWindow):
         self.redo_button = QPushButton("Redo Selected Ref")
         self.redo_button.clicked.connect(self.redo_selected_ref)
 
+        self.remove_button = QPushButton("Remove Selected Ref")
+        self.remove_button.clicked.connect(self.remove_selected_ref)
+
         button_layout = QHBoxLayout()
         for widget in [
             QLabel("Start Time:"), self.start_time_input, self.min_time_label,
@@ -88,7 +91,7 @@ class PCA3DViewer(QMainWindow):
         redo_layout = QHBoxLayout()
         for widget in [
             QLabel("Closure Threshold:"), self.redo_closure_input,
-            self.redo_button
+            self.redo_button, self.remove_button
         ]:
             redo_layout.addWidget(widget)
 
@@ -170,6 +173,10 @@ class PCA3DViewer(QMainWindow):
 
     def recompute_segments_and_ref(self):
         try:
+            if not self.computed_refs:
+                QtWidgets.QMessageBox.warning(self, "No Ref Cycles", "No reference cycles to update from.")
+                return
+
             start_time = float(self.start_time_input.text())
             end_time = float(self.end_time_input.text())
             self.segment_duration = float(self.segment_duration_input.text())
@@ -237,6 +244,26 @@ class PCA3DViewer(QMainWindow):
 
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Ref Redo Error", f"Failed to redo ref cycle:\n{e}")
+
+    def remove_selected_ref(self):
+        try:
+            ref_index = self.ref_selector.currentIndex()
+            if ref_index < 0 or ref_index >= len(self.computed_refs):
+                return
+
+            del self.computed_refs[ref_index]
+            if not self.computed_refs:
+                self.updated_refs = []
+                self.pca_segments = []
+                self.update_ref_selector()
+                self.view.clear()
+                QtWidgets.QMessageBox.information(self, "No Ref", "All computed ref cycles removed.")
+                return
+
+            self.recompute_segments_and_ref()
+
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Remove Ref Error", f"Failed to remove ref cycle:\n{e}")
 
     def prev_segment(self):
         if self.pca_index > 0:
