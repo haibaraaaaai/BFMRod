@@ -9,7 +9,7 @@ import numpy as np
 
 from processing.pca_module import apply_pca, detect_cycle_bounds, ref_cycle_update
 from utils.smoothing import smooth_trajectory, smooth_data_with_convolution
-from config import SAMPLING_RATE, DEFAULT_PCA_SEGMENT_DURATION, DEFAULT_CLOSURE_THRESHOLD, CONVOLUTION_WINDOW
+from config import SAMPLING_RATE, DEFAULT_PCA_SEGMENT_DURATION, DEFAULT_CLOSURE_THRESHOLD, CONVOLUTION_WINDOW, FIRST_CYCLE_DETECTION_LIMIT, END_OF_CYCLE_LIMIT
 
 
 class PCA3DViewer(QMainWindow):
@@ -26,12 +26,10 @@ class PCA3DViewer(QMainWindow):
         self.alpha = 0.2
         self.fraction = 0.025
 
-        # Run PCA on full data
         pca, _ = apply_pca(self.data)
         self.pca = smooth_data_with_convolution(pca, CONVOLUTION_WINDOW)
         self.timestamps = timestamps[:len(self.pca)]
 
-        # Build reference cycle
         ref_start, ref_end = detect_cycle_bounds(self.pca, self.closure_threshold)
         initial_cycle = self.pca[ref_start:ref_end]
         smooth_ref_cycle = smooth_trajectory(initial_cycle)
@@ -62,7 +60,6 @@ class PCA3DViewer(QMainWindow):
         self.segment_duration_input = QLineEdit(str(self.segment_duration))
         self.update_interval_input = QLineEdit(str(self.update_interval))
 
-        # Labels for min/max
         self.min_time_label = QLabel(f"(Min: {self.timestamps[0]:.3f}s)")
         self.max_time_label = QLabel(f"(Max: {self.timestamps[-1]:.3f}s)")
         self.min_time_label.setStyleSheet("font-size: 10px; color: gray;")
@@ -74,6 +71,10 @@ class PCA3DViewer(QMainWindow):
         self.ref_selector.currentIndexChanged.connect(self.jump_to_ref_cycle)
         self.update_ref_selector()
 
+        self.redo_closure_input = QLineEdit(str(self.closure_threshold))
+        self.redo_button = QPushButton("Redo Selected Ref")
+        self.redo_button.clicked.connect(self.redo_selected_ref)
+
         button_layout = QHBoxLayout()
         for widget in [
             QLabel("Start Time:"), self.start_time_input, self.min_time_label,
@@ -83,6 +84,13 @@ class PCA3DViewer(QMainWindow):
             QLabel("Ref Cycles:"), self.ref_selector
         ]:
             button_layout.addWidget(widget)
+
+        redo_layout = QHBoxLayout()
+        for widget in [
+            QLabel("Closure Threshold:"), self.redo_closure_input,
+            self.redo_button
+        ]:
+            redo_layout.addWidget(widget)
 
         fraction_alpha_layout = QHBoxLayout()
         for widget in [
@@ -99,6 +107,7 @@ class PCA3DViewer(QMainWindow):
         layout.addWidget(self.view)
         layout.addLayout(button_layout)
         layout.addLayout(fraction_alpha_layout)
+        layout.addLayout(redo_layout)
 
         container = QWidget()
         container.setLayout(layout)
@@ -203,6 +212,31 @@ class PCA3DViewer(QMainWindow):
 
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Update Error", f"Failed to update PCA segments:\n{e}")
+
+    def redo_selected_ref(self):
+        try:
+            ref_index = self.ref_selector.currentIndex()
+            if ref_index < 0 or ref_index >= len(self.computed_refs):
+                return
+
+            new_closure_threshold = int(self.redo_closure_input.text())
+            old_start_idx, _ = self.computed_refs[ref_index]
+            redo_ref_start = max(0, old_start_idx - FIRST_CYCLE_DETECTION_LIMIT // 2)
+            redo_ref_end = redo_ref_start + FIRST_CYCLE_DETECTION_LIMIT + END_OF_CYCLE_LIMIT
+
+            short_window = self.pca[redo_ref_start:redo_ref_end]
+            local_start, local_end = detect_cycle_bounds(short_window, closure_threshold=new_closure_threshold)
+            new_ref_start = redo_ref_start + local_start
+            new_ref_end = redo_ref_start + local_end
+
+            new_cycle = self.pca[new_ref_start:new_ref_end]
+            smooth_ref = smooth_trajectory(new_cycle)
+
+            self.computed_refs[ref_index] = (new_ref_start, smooth_ref)
+            self.recompute_segments_and_ref()
+
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Ref Redo Error", f"Failed to redo ref cycle:\n{e}")
 
     def prev_segment(self):
         if self.pca_index > 0:
