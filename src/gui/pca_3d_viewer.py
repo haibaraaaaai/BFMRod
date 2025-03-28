@@ -78,6 +78,9 @@ class PCA3DViewer(QMainWindow):
         self.remove_button = QPushButton("Remove Selected Ref")
         self.remove_button.clicked.connect(self.remove_selected_ref)
 
+        self.add_button = QPushButton("Add Ref Cycle")
+        self.add_button.clicked.connect(self.add_ref_cycle)
+
         button_layout = QHBoxLayout()
         for widget in [
             QLabel("Start Time:"), self.start_time_input, self.min_time_label,
@@ -91,7 +94,7 @@ class PCA3DViewer(QMainWindow):
         redo_layout = QHBoxLayout()
         for widget in [
             QLabel("Closure Threshold:"), self.redo_closure_input,
-            self.redo_button, self.remove_button
+            self.redo_button, self.remove_button, self.add_button
         ]:
             redo_layout.addWidget(widget)
 
@@ -123,17 +126,20 @@ class PCA3DViewer(QMainWindow):
         self.ref_selector.clear()
         for i, (idx, _) in enumerate(self.computed_refs):
             timestamp = self.timestamps[idx]
-            self.ref_selector.addItem(f"Ref {i+1} @ {timestamp:.2f}s")
+            self.ref_selector.addItem(f"Ref {i+1} @ {timestamp:.3f}s")
 
     def jump_to_ref_cycle(self, index):
         if index < 0 or index >= len(self.computed_refs):
             return
-        ref_idx = self.computed_refs[index][0]
+
+        ref_start_idx, ref_cycle = self.computed_refs[index]
+        ref_mid_idx = ref_start_idx + len(ref_cycle) // 2
+
         closest_segment_index = min(
             range(len(self.pca_segments)),
             key=lambda i: abs(
                 np.searchsorted(self.timestamps, (self.pca_segments[i][1] + self.pca_segments[i][2]) / 2)
-                - ref_idx
+                - ref_mid_idx
             )
         )
         self.pca_index = closest_segment_index
@@ -174,7 +180,7 @@ class PCA3DViewer(QMainWindow):
     def recompute_segments_and_ref(self):
         try:
             if not self.computed_refs:
-                QtWidgets.QMessageBox.warning(self, "No Ref Cycles", "No reference cycles to update from.")
+                QtWidgets.QMessageBox.warning(self, "Missing Ref", "Cannot update without any reference cycles.")
                 return
 
             start_time = float(self.start_time_input.text())
@@ -228,7 +234,7 @@ class PCA3DViewer(QMainWindow):
 
             new_closure_threshold = int(self.redo_closure_input.text())
             old_start_idx, _ = self.computed_refs[ref_index]
-            redo_ref_start = max(0, old_start_idx - FIRST_CYCLE_DETECTION_LIMIT // 2)
+            redo_ref_start = max(0, old_start_idx - END_OF_CYCLE_LIMIT)
             redo_ref_end = redo_ref_start + FIRST_CYCLE_DETECTION_LIMIT + END_OF_CYCLE_LIMIT
 
             short_window = self.pca[redo_ref_start:redo_ref_end]
@@ -246,24 +252,36 @@ class PCA3DViewer(QMainWindow):
             QtWidgets.QMessageBox.critical(self, "Ref Redo Error", f"Failed to redo ref cycle:\n{e}")
 
     def remove_selected_ref(self):
-        try:
-            ref_index = self.ref_selector.currentIndex()
-            if ref_index < 0 or ref_index >= len(self.computed_refs):
-                return
-
-            del self.computed_refs[ref_index]
+        ref_index = self.ref_selector.currentIndex()
+        if 0 <= ref_index < len(self.computed_refs):
+            self.computed_refs.pop(ref_index)
+            self.updated_refs = []
             if not self.computed_refs:
-                self.updated_refs = []
                 self.pca_segments = []
                 self.update_ref_selector()
                 self.view.clear()
-                QtWidgets.QMessageBox.information(self, "No Ref", "All computed ref cycles removed.")
-                return
+            else:
+                self.recompute_segments_and_ref()
 
+    def add_ref_cycle(self):
+        try:
+            if self.computed_refs:
+                seg_start_idx = np.searchsorted(self.timestamps, self.pca_segments[self.pca_index][1])
+            else:
+                seg_start_idx = 0
+
+            seg_end_idx = seg_start_idx + FIRST_CYCLE_DETECTION_LIMIT + END_OF_CYCLE_LIMIT
+            short_window = self.pca[seg_start_idx:seg_end_idx]
+            local_start, local_end = detect_cycle_bounds(short_window, closure_threshold=self.closure_threshold)
+            new_ref_start = seg_start_idx + local_start
+            new_ref_end = seg_start_idx + local_end
+            new_cycle = self.pca[new_ref_start:new_ref_end]
+            smooth_ref = smooth_trajectory(new_cycle)
+            self.computed_refs.append((new_ref_start, smooth_ref))
             self.recompute_segments_and_ref()
 
         except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Remove Ref Error", f"Failed to remove ref cycle:\n{e}")
+            QtWidgets.QMessageBox.critical(self, "Add Ref Error", f"Failed to add new ref cycle:\n{e}")
 
     def prev_segment(self):
         if self.pca_index > 0:
