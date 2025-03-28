@@ -44,6 +44,10 @@ class PCA3DViewer(QMainWindow):
 
         self.manual_start_idx = ref_start
         self.manual_end_idx = ref_end
+        self.preview_mode = False
+
+        self.manual_start_input = None
+        self.manual_end_input = None
 
         self._init_ui()
         self.plot_pca_segment(self.pca_segments[0])
@@ -94,6 +98,9 @@ class PCA3DViewer(QMainWindow):
         self.confirm_button = QPushButton("Confirm Manual Ref")
         self.confirm_button.clicked.connect(self.confirm_manual_ref)
 
+        self.manual_start_input.textChanged.connect(self._on_manual_input_changed)
+        self.manual_end_input.textChanged.connect(self._on_manual_input_changed)
+
         button_layout = QHBoxLayout()
         for widget in [
             QLabel("Start Time:"), self.start_time_input, self.min_time_label,
@@ -143,10 +150,63 @@ class PCA3DViewer(QMainWindow):
 
         QShortcut(QKeySequence(QtCore.Qt.Key.Key_Left), self).activated.connect(self.prev_segment)
         QShortcut(QKeySequence(QtCore.Qt.Key.Key_Right), self).activated.connect(self.next_segment)
-        QShortcut(QKeySequence(QtCore.Qt.Key.Key_Up), self.manual_start_input).activated.connect(lambda: self._nudge_index(self.manual_start_input, 1))
-        QShortcut(QKeySequence(QtCore.Qt.Key.Key_Down), self.manual_start_input).activated.connect(lambda: self._nudge_index(self.manual_start_input, -1))
-        QShortcut(QKeySequence(QtCore.Qt.Key.Key_Up), self.manual_end_input).activated.connect(lambda: self._nudge_index(self.manual_end_input, 1))
-        QShortcut(QKeySequence(QtCore.Qt.Key.Key_Down), self.manual_end_input).activated.connect(lambda: self._nudge_index(self.manual_end_input, -1))
+        QShortcut(QKeySequence(QtCore.Qt.Key.Key_Up), self).activated.connect(self._nudge_up)
+        QShortcut(QKeySequence(QtCore.Qt.Key.Key_Down), self).activated.connect(self._nudge_down)
+
+    def _nudge_up(self):
+        self._nudge_focused(1)
+
+    def _nudge_down(self):
+        self._nudge_focused(-1)
+
+    def _nudge_focused(self, delta):
+        focus = QtWidgets.QApplication.focusWidget()
+        if isinstance(focus, QLineEdit) and (focus == self.manual_start_input or focus == self.manual_end_input):
+            self._nudge_index(focus, delta)
+
+    def _nudge_index(self, line_edit, delta):
+        try:
+            val = int(line_edit.text())
+            new_val = val + delta
+            line_edit.setText(str(new_val))
+            if self.preview_mode:
+                self._update_preview_line()
+        except ValueError:
+            pass
+
+    def _on_manual_input_changed(self):
+        if self.preview_mode:
+            self._update_preview_line()
+
+    def preview_manual_ref(self):
+        try:
+            if not self.preview_mode:
+                self.preview_mode = True
+                self.preview_button.setText("Cancel Preview")
+                self._update_preview_line()
+            else:
+                self.preview_mode = False
+                self.preview_button.setText("Preview Manual Ref")
+                if self.preview_line and self.preview_line in self.view.items:
+                    self.view.removeItem(self.preview_line)
+                self.preview_line = None
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Manual Preview Error", f"Failed to toggle preview mode:\n{e}")
+
+    def _update_preview_line(self):
+        try:
+            start_idx = int(self.manual_start_input.text())
+            end_idx = int(self.manual_end_input.text())
+            if not (0 <= start_idx < end_idx <= len(self.pca)):
+                return
+            ref = self.pca[start_idx:end_idx]
+            if self.preview_line and self.preview_line in self.view.items:
+                self.view.removeItem(self.preview_line)
+            self.preview_line = gl.GLLinePlotItem(pos=ref, color=(1, 0.5, 0, 1), width=2.0, antialias=True)
+            self.view.addItem(self.preview_line)
+        except Exception:
+            pass
+
 
     def update_ref_selector(self):
         self.ref_selector.clear()
@@ -159,13 +219,12 @@ class PCA3DViewer(QMainWindow):
             return
 
         ref_start_idx, ref_cycle = self.computed_refs[index]
-        ref_mid_idx = ref_start_idx + len(ref_cycle) // 2
 
         closest_segment_index = min(
             range(len(self.pca_segments)),
             key=lambda i: abs(
                 np.searchsorted(self.timestamps, (self.pca_segments[i][1] + self.pca_segments[i][2]) / 2)
-                - ref_mid_idx
+                - ref_start_idx
             )
         )
         self.pca_index = closest_segment_index
@@ -186,14 +245,20 @@ class PCA3DViewer(QMainWindow):
             self.all_refs = self.computed_refs + self.updated_refs
             segment_center_time = (seg_start_time + seg_end_time) / 2
             segment_center_idx = np.searchsorted(self.timestamps, segment_center_time)
-            closest_ref_cycle = min(
+            closest_ref = min(
                 self.all_refs,
                 key=lambda rc: abs(rc[0] - segment_center_idx)
-            )[1] if self.all_refs else None
+            ) if self.all_refs else None
 
-            if closest_ref_cycle is not None:
-                self.ref_line = gl.GLLinePlotItem(pos=closest_ref_cycle, color=(1, 0, 0, 1), width=2.0, antialias=True)
+            if closest_ref is not None:
+                ref_start_idx, ref_cycle = closest_ref
+                self.ref_line = gl.GLLinePlotItem(pos=ref_cycle, color=(1, 0, 0, 1), width=2.0, antialias=True)
                 self.view.addItem(self.ref_line)
+
+            if not self.preview_mode:
+                if self.manual_start_input and self.manual_end_input:
+                    self.manual_start_input.setText(str(ref_start_idx))
+                    self.manual_end_input.setText(str(ref_start_idx + len(ref_cycle)))
 
             self.setWindowTitle(
                 f"3D PCA Viewer - Segment {self.pca_index + 1}/{len(self.pca_segments)} "
@@ -308,27 +373,6 @@ class PCA3DViewer(QMainWindow):
 
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Add Ref Error", f"Failed to add new ref cycle:\n{e}")
-
-    def _nudge_index(self, line_edit, delta):
-        try:
-            val = int(line_edit.text())
-            line_edit.setText(str(val + delta))
-        except ValueError:
-            pass
-
-    def preview_manual_ref(self):
-        try:
-            start_idx = int(self.manual_start_input.text())
-            end_idx = int(self.manual_end_input.text())
-            if start_idx < 0 or end_idx > len(self.pca) or start_idx >= end_idx:
-                return
-            ref = self.pca[start_idx:end_idx]
-            if self.preview_line and self.preview_line in self.view.items:
-                self.view.removeItem(self.preview_line)
-            self.preview_line = gl.GLLinePlotItem(pos=ref, color=(1, 0.5, 0, 1), width=2.0, antialias=True)
-            self.view.addItem(self.preview_line)
-        except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Manual Preview Error", f"Failed to preview manual ref cycle:\n{e}")
 
     def confirm_manual_ref(self):
         try:
