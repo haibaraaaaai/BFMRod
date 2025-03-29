@@ -223,9 +223,9 @@ def ref_cycle_update(X_pca, timestamps, computed_refs, pca_start_idx, update_int
             new_ref = np.array([np.median(points, axis=0) for points in phase_bins])
             blended_ref = (1 - alpha) * smooth_ref_cycle + alpha * new_ref
             smooth_ref_cycle = smooth_trajectory(blended_ref)
+            i += update_sample_size
             updated_refs.append((ref_start_idx + seg_start, smooth_ref_cycle))
 
-            i += update_sample_size
             phase0 = np.concatenate((phase0, phase_indices))
             prev_phase = phase_indices[-1]
 
@@ -235,62 +235,25 @@ def ref_cycle_update(X_pca, timestamps, computed_refs, pca_start_idx, update_int
     phase = np.unwrap(phase)
     phase_time = timestamps[:len(phase)]
 
-    return updated_refs, phase, phase_time
+    return updated_refs, phase, phase_time, phase0
 
 # ───────────────────────────────────────────────────────────────
-# High-Level Workflow
+# High-Level
 # ───────────────────────────────────────────────────────────────
 
-def run_pca_workflow(data, timestamps, start_time, end_time, segment_duration, closure_threshold):
-    segment_size = int(segment_duration * SAMPLING_RATE)
-    total_time = end_time - start_time
-    expected_segments = int(total_time / segment_duration)
+# updated_refs, phase, phase_time = ref_cycle_update(X_pca, timestamps, smooth_ref_cycle, start_idx, ref_start)
 
-    pad_samples = CONVOLUTION_WINDOW - 1
-    total_samples_needed = expected_segments * segment_size
-    raw_end_sample = total_samples_needed + pad_samples
+# phase = savgol_filter(phase, window_length=51, polyorder=3)
+# raw_speed = np.gradient(phase, 1 / SAMPLING_RATE)
+# phi_wrapped = phase % (2 * np.pi)
+# # the plotting within linearizing_function.py seems not to be working, so show=0
+# f = linearizing_speed_function(phi_wrapped, raw_speed, N=500, fftfilter=1, mfilter=7, show=0)
+# phi_corrected = f(phi_wrapped)
+# phase = np.unwrap(phi_corrected)
 
-    start_idx = np.searchsorted(timestamps, start_time)
-    end_idx = min(start_idx + raw_end_sample, len(timestamps))
-
-    raw_signals = data[start_idx:end_idx, :]
-    smoothed_signals = smooth_data_with_convolution(raw_signals)
-
-    X_pca, _ = apply_pca(smoothed_signals)
-    # Segment PCA
-    pca_segments = []
-    for seg_idx in range(expected_segments):
-        seg_start = seg_idx * segment_size
-        seg_end = seg_start + segment_size
-        if seg_end > X_pca.shape[0]:
-            break
-        segment_data = X_pca[seg_start:seg_end]
-        seg_start_time = timestamps[start_idx + pad_samples + seg_start]
-        seg_end_time = timestamps[start_idx + pad_samples + seg_end - 1]
-        pca_segments.append((segment_data, seg_start_time, seg_end_time))
-
-    # Detect and build initial ref cycle
-    ref_start, ref_end = detect_cycle_bounds(X_pca, closure_threshold)
-    initial_cycle = X_pca[ref_start:ref_end]
-    # M = len(initial_cycle)
-    # avg_signal_d_av = np.zeros([M // REFERENCE_NUM_POINTS, 3])
-    # for i in range(M // REFERENCE_NUM_POINTS):
-    #     avg_signal_d_av[i] = np.mean(initial_cycle[i * REFERENCE_NUM_POINTS : (i + 1) * REFERENCE_NUM_POINTS], axis=0)
-    smooth_ref_cycle = smooth_trajectory(initial_cycle)
-
-    updated_refs, phase, phase_time = ref_cycle_update(X_pca, timestamps, smooth_ref_cycle, start_idx, ref_start)
-
-    phase = savgol_filter(phase, window_length=51, polyorder=3)
-    raw_speed = np.gradient(phase, 1 / SAMPLING_RATE)
-    phi_wrapped = phase % (2 * np.pi)
-    # the plotting within linearizing_function.py seems not to be working, so show=0
-    f = linearizing_speed_function(phi_wrapped, raw_speed, N=500, fftfilter=1, mfilter=7, show=0)
-    phi_corrected = f(phi_wrapped)
-    phase = np.unwrap(phi_corrected)
-
-    return {
-        "pca_segments": pca_segments,
-        "updated_refs": updated_refs,
-        "phase": phase,
-        "phase_time": phase_time,
-    }
+# return {
+#     "pca_segments": pca_segments,
+#     "updated_refs": updated_refs,
+#     "phase": phase,
+#     "phase_time": phase_time,
+# }

@@ -1,10 +1,5 @@
 Development To-Do List
-1. Core Features & Enhancements
-    Compare X_PCA[:, 0] vs smooth_loop[phase[:, 0]] across whole file.
-        Use as a parameter for auto-redetect-ref?
-
-
-2. Ref Cycle Logic
+1. Ref Cycle Logic
     Dynamic Threshold Trigger for ref cycle update:
         Trigger update only if phase error or distance exceeds threshold.
         Input timestamp → run detect_cycle_bounds() around it.
@@ -16,7 +11,7 @@ Development To-Do List
 
     Backward penalty for indices more than one or two units away?
 
-3. Other Ideas
+2. Other Ideas
     Investigate anisotropy vs total intensity (normalize XYZ to [-1, 1]).
 
     Check transient pauses paper for pause detection.
