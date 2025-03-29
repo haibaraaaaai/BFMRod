@@ -5,11 +5,13 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QShortcut, QKeySequence
 import pyqtgraph.opengl as gl
+import pyqtgraph as pg
 import numpy as np
 
 from processing.pca_module import apply_pca, detect_cycle_bounds, ref_cycle_update
 from utils.smoothing import smooth_trajectory, smooth_data_with_convolution
 from config import SAMPLING_RATE, DEFAULT_PCA_SEGMENT_DURATION, DEFAULT_CLOSURE_THRESHOLD, CONVOLUTION_WINDOW, FIRST_CYCLE_DETECTION_LIMIT, END_OF_CYCLE_LIMIT
+from gui.pca_comparison_viewer import PCAComparisonViewer
 
 
 class PCA3DViewer(QMainWindow):
@@ -18,7 +20,6 @@ class PCA3DViewer(QMainWindow):
         self.setWindowTitle("PCA 3D Viewer")
         self.setGeometry(200, 200, 1000, 700)
 
-        self.data = data
         self.segment_duration = DEFAULT_PCA_SEGMENT_DURATION
         self.segment_size = int(self.segment_duration * SAMPLING_RATE)
         self.closure_threshold = DEFAULT_CLOSURE_THRESHOLD
@@ -26,7 +27,7 @@ class PCA3DViewer(QMainWindow):
         self.alpha = 0.2
         self.fraction = 0.025
 
-        pca, _ = apply_pca(self.data)
+        pca, _ = apply_pca(data)
         self.pca = smooth_data_with_convolution(pca, CONVOLUTION_WINDOW)
         self.timestamps = timestamps[:len(self.pca)]
 
@@ -39,15 +40,18 @@ class PCA3DViewer(QMainWindow):
         init_seg_end_time = self.timestamps[self.segment_size - 1]
         self.pca_segments = [(init_segment_data, init_seg_start_time, init_seg_end_time)]
         self.computed_refs = [(ref_start, smooth_ref_cycle)]
+        self.valid_refs = list(self.computed_refs)
+        self.all_valid_refs = list(self.computed_refs)
         self.updated_refs = []
         self.pca_index = 0
 
         self.manual_start_idx = ref_start
         self.manual_end_idx = ref_end
-        self.preview_mode = False
-
         self.manual_start_input = None
         self.manual_end_input = None
+        self.preview_mode = False
+
+        self.phase_ref_start_idx = None
 
         self._init_ui()
         self.plot_pca_segment(self.pca_segments[0])
@@ -133,6 +137,10 @@ class PCA3DViewer(QMainWindow):
         ]:
             fraction_alpha_layout.addWidget(widget)
 
+        self.compare_button = QPushButton("Compare PCA0 vs Ref[Phase]")
+        self.compare_button.clicked.connect(self.compare_pca_to_ref_phase)
+        button_layout.addWidget(self.compare_button)
+
         self.recompute_button = QPushButton("Set PCA Window + Update Ref")
         self.recompute_button.clicked.connect(self.recompute_segments_and_ref)
         button_layout.addWidget(self.recompute_button)
@@ -207,18 +215,30 @@ class PCA3DViewer(QMainWindow):
         except Exception:
             pass
 
-
     def update_ref_selector(self):
         self.ref_selector.clear()
+        self.computed_refs = sorted(self.computed_refs, key=lambda r: r[0])
+        valid_set = set(ref[0] for ref in self.valid_refs) if hasattr(self, 'valid_refs') else set()
+
         for i, (idx, _) in enumerate(self.computed_refs):
             timestamp = self.timestamps[idx]
-            self.ref_selector.addItem(f"Ref {i+1} @ {timestamp:.3f}s")
+            label = f"Ref {i+1} @ {timestamp:.3f}s"
+            if idx not in valid_set:
+                label += " (not in range)"
+            self.ref_selector.addItem(label)
 
     def jump_to_ref_cycle(self, index):
         if index < 0 or index >= len(self.computed_refs):
             return
 
         ref_start_idx, ref_cycle = self.computed_refs[index]
+
+        # Show warning if this ref is not part of valid_refs
+        if not any(ref_start_idx == r[0] for r in getattr(self, 'valid_refs', [])):
+            QtWidgets.QMessageBox.warning(
+                self, "Ref Not in Range", 
+                f"Ref {index+1} is outside the current PCA window and won't be used in phase or segment updates."
+            )
 
         closest_segment_index = min(
             range(len(self.pca_segments)),
@@ -230,9 +250,9 @@ class PCA3DViewer(QMainWindow):
         self.pca_index = closest_segment_index
         self.plot_pca_segment(self.pca_segments[self.pca_index])
 
-    def plot_pca_segment(self, segment_data):
+    def plot_pca_segment(self, pca_segment):
         try:
-            X_pca, seg_start_time, seg_end_time = segment_data
+            X_pca, seg_start_time, seg_end_time = pca_segment
 
             if self.pca_line and self.pca_line in self.view.items:
                 self.view.removeItem(self.pca_line)
@@ -242,13 +262,12 @@ class PCA3DViewer(QMainWindow):
             self.pca_line = gl.GLLinePlotItem(pos=X_pca, color=(0, 0, 1, 1), width=2.0, antialias=True)
             self.view.addItem(self.pca_line)
 
-            self.all_refs = self.computed_refs + self.updated_refs
             segment_center_time = (seg_start_time + seg_end_time) / 2
             segment_center_idx = np.searchsorted(self.timestamps, segment_center_time)
             closest_ref = min(
-                self.all_refs,
+                self.all_valid_refs,
                 key=lambda rc: abs(rc[0] - segment_center_idx)
-            ) if self.all_refs else None
+            ) if self.all_valid_refs else None
 
             if closest_ref is not None:
                 ref_start_idx, ref_cycle = closest_ref
@@ -288,16 +307,23 @@ class PCA3DViewer(QMainWindow):
 
             pca_start_idx = np.searchsorted(self.timestamps, start_time, side='left')
             pca_end_idx = np.searchsorted(self.timestamps, end_time, side='right')
+
+            self.valid_refs = [r for r in self.computed_refs if r[0] >= pca_start_idx]
+            if not self.valid_refs:
+                QtWidgets.QMessageBox.warning(self, "No Valid Ref", "No reference cycles within selected window.")
+                return
+
             windowed_pca = self.pca[pca_start_idx:pca_end_idx]
 
-            updated_refs, _, _ = ref_cycle_update(
+            self.updated_refs, self.phase, self.phase_time, self.phase0 = ref_cycle_update(
                 windowed_pca, self.timestamps[pca_start_idx:pca_end_idx],
-                self.computed_refs, pca_start_idx,
+                self.valid_refs, pca_start_idx,
                 update_interval=self.update_interval,
                 fraction=self.fraction,
                 alpha=self.alpha
             )
-            self.updated_refs = updated_refs
+            self.phase_ref_start_idx = self.valid_refs[0][0]
+            self.all_valid_refs = sorted(self.valid_refs + self.updated_refs, key=lambda r: r[0])
             self.update_ref_selector()
 
             segments = []
@@ -399,3 +425,47 @@ class PCA3DViewer(QMainWindow):
         if self.pca_index < len(self.pca_segments) - 1:
             self.pca_index += 1
             self.plot_pca_segment(self.pca_segments[self.pca_index])
+
+    def compare_pca_to_ref_phase(self):
+        try:
+            if not hasattr(self, 'phase') or not hasattr(self, 'phase_time') or self.phase_ref_start_idx is None:
+                QtWidgets.QMessageBox.warning(self, "Missing Phase", "No phase data available. Please recompute first.")
+                return
+
+            times = self.phase_time
+            phase = self.phase0
+            if len(phase) != len(times):
+                QtWidgets.QMessageBox.critical(self, "Mismatch", "Phase and time arrays have different lengths.")
+                return
+
+            if not self.all_valid_refs:
+                QtWidgets.QMessageBox.warning(self, "No Ref", "No reference cycles to use.")
+                return
+
+            ref_trace = np.zeros_like(phase, dtype=float)
+            indices = np.arange(len(phase))
+            start_indices = [start - self.phase_ref_start_idx for start, _ in self.all_valid_refs] + [len(phase)]
+
+            for i in range(len(self.all_valid_refs)):
+                start_idx = start_indices[i]
+                end_idx = start_indices[i + 1]
+                mask = (indices >= start_idx) & (indices < end_idx)
+
+                ref_cycle = self.all_valid_refs[i][1]
+
+                if not np.any(mask):
+                    continue
+
+                if np.max(phase[mask]) >= len(ref_cycle):
+                    QtWidgets.QMessageBox.warning(self, "Ref too short", f"Reference cycle {i+1} is too short for assigned phases.")
+                    return
+
+                ref_trace[mask] = ref_cycle[phase[mask], 0]
+
+            pca_trace = self.pca[self.phase_ref_start_idx:self.phase_ref_start_idx + len(phase), 0]
+
+            self.comparison_viewer = PCAComparisonViewer(times, pca_trace, ref_trace)
+            self.comparison_viewer.show()
+
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "Compare Error", f"Comparison failed:{e}")
