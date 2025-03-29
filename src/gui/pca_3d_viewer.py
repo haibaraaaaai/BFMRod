@@ -5,13 +5,15 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtGui import QShortcut, QKeySequence
 import pyqtgraph.opengl as gl
-import pyqtgraph as pg
 import numpy as np
+from scipy.signal import savgol_filter
 
 from processing.pca_module import apply_pca, detect_cycle_bounds, ref_cycle_update
 from utils.smoothing import smooth_trajectory, smooth_data_with_convolution
 from config import SAMPLING_RATE, DEFAULT_PCA_SEGMENT_DURATION, DEFAULT_CLOSURE_THRESHOLD, CONVOLUTION_WINDOW, FIRST_CYCLE_DETECTION_LIMIT, END_OF_CYCLE_LIMIT
 from gui.pca_comparison_viewer import PCAComparisonViewer
+from gui.phase_viewer import PhaseViewer
+from gui.pca_speed_viewer import PCASpeedViewer
 
 
 class PCA3DViewer(QMainWindow):
@@ -144,6 +146,14 @@ class PCA3DViewer(QMainWindow):
         self.recompute_button = QPushButton("Set PCA Window + Update Ref")
         self.recompute_button.clicked.connect(self.recompute_segments_and_ref)
         button_layout.addWidget(self.recompute_button)
+
+        self.phase_button = QPushButton("Phase Viewer")
+        self.phase_button.clicked.connect(self.launch_phase_viewer)
+        button_layout.addWidget(self.phase_button)
+
+        self.speed_button = QPushButton("Speed Viewer")
+        self.speed_button.clicked.connect(self.launch_speed_viewer)
+        button_layout.addWidget(self.speed_button)
 
         layout = QVBoxLayout()
         layout.addWidget(self.view)
@@ -315,13 +325,14 @@ class PCA3DViewer(QMainWindow):
 
             windowed_pca = self.pca[pca_start_idx:pca_end_idx]
 
-            self.updated_refs, self.phase, self.phase_time, self.phase0 = ref_cycle_update(
+            self.updated_refs, phase, self.phase_time, self.phase0 = ref_cycle_update(
                 windowed_pca, self.timestamps[pca_start_idx:pca_end_idx],
                 self.valid_refs, pca_start_idx,
                 update_interval=self.update_interval,
                 fraction=self.fraction,
                 alpha=self.alpha
             )
+            self.phase = savgol_filter(phase, window_length=51, polyorder=3)
             self.phase_ref_start_idx = self.valid_refs[0][0]
             self.all_valid_refs = sorted(self.valid_refs + self.updated_refs, key=lambda r: r[0])
             self.update_ref_selector()
@@ -469,3 +480,22 @@ class PCA3DViewer(QMainWindow):
 
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Compare Error", f"Comparison failed:{e}")
+
+    def launch_phase_viewer(self):
+        if not hasattr(self, "phase") or not hasattr(self, "phase_time"):
+            QtWidgets.QMessageBox.warning(self, "Missing Phase", "Phase data not available. Run recompute first.")
+            return
+        self.phase_viewer = PhaseViewer(self.phase_time, self.phase)
+        self.phase_viewer.show()
+
+    def launch_speed_viewer(self):
+        if not hasattr(self, "phase") or not hasattr(self, "phase_time"):
+            QtWidgets.QMessageBox.warning(self, "Missing Phase", "Phase data not available. Run recompute first.")
+            return
+
+        self.speed_viewer = PCASpeedViewer(
+            phase=self.phase,
+            phase_time=self.phase_time,
+            sampling_rate=1 / SAMPLING_RATE
+        )
+        self.speed_viewer.show()

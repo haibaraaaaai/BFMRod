@@ -10,16 +10,13 @@ Handles:
 
 import numpy as np
 from sklearn.decomposition import PCA
-from scipy.signal import find_peaks, peak_widths, savgol_filter
+from scipy.signal import find_peaks, peak_widths
 from scipy.spatial import KDTree
 from numba import njit
 
-from utils.smoothing import smooth_trajectory, smooth_data_with_convolution
-from utils.linearizing_function import linearizing_speed_function
+from utils.smoothing import smooth_trajectory
 from config import (
     SAMPLING_RATE,
-    CONVOLUTION_WINDOW,
-    REFERENCE_NUM_POINTS,
     WINDOW_DETECTION,
     FIRST_CYCLE_DETECTION_LIMIT,
     END_OF_CYCLE_LIMIT,
