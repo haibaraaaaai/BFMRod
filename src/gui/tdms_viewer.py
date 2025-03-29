@@ -27,8 +27,9 @@ class TDMSViewer(QMainWindow):
                 self.close()
                 return
 
-        self.setWindowTitle(f"Viewing: {os.path.basename(file_path)}")
-        self.load_data(file_path)
+        self.last_file_path = file_path
+        self.setWindowTitle(f"Viewing: {os.path.basename(self.last_file_path)}")
+        self.load_data(self.last_file_path)
 
         self.window_size = 10_000
         self.start_index = 0
@@ -206,9 +207,14 @@ class TDMSViewer(QMainWindow):
 
     def launch_pca_viewer(self):
         try:
+            tdms_filename = os.path.splitext(os.path.basename(self.last_file_path))[0]
+            parent_folder = os.path.basename(os.path.dirname(self.last_file_path))
+            file_basename = os.path.join(parent_folder, tdms_filename)
+
             self.pca_viewer = PCA3DViewer(
                 data=self.data,
                 timestamps=self.timestamps,
+                file_basename=file_basename
             )
             self.pca_viewer.show()
         except Exception as e:
@@ -217,6 +223,7 @@ class TDMSViewer(QMainWindow):
     def load_new_tdms_file(self):
         file_path = self.prompt_for_file()
         if file_path:
+            self.last_file_path = file_path
             self.load_data(file_path)
             self.start_index = 0
             self.window_size = 10_000

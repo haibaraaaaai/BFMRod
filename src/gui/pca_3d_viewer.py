@@ -7,6 +7,8 @@ from PyQt6.QtGui import QShortcut, QKeySequence
 import pyqtgraph.opengl as gl
 import numpy as np
 from scipy.signal import savgol_filter
+import os
+import json
 
 from processing.pca_module import apply_pca, detect_cycle_bounds, ref_cycle_update
 from utils.smoothing import smooth_trajectory, smooth_data_with_convolution
@@ -17,11 +19,12 @@ from gui.pca_speed_viewer import PCASpeedViewer
 
 
 class PCA3DViewer(QMainWindow):
-    def __init__(self, data, timestamps):
+    def __init__(self, data, timestamps, file_basename="unnamed"):
         super().__init__()
         self.setWindowTitle("PCA 3D Viewer")
         self.setGeometry(200, 200, 1000, 700)
 
+        self.file_basename = file_basename
         self.segment_duration = DEFAULT_PCA_SEGMENT_DURATION
         self.segment_size = int(self.segment_duration * SAMPLING_RATE)
         self.closure_threshold = DEFAULT_CLOSURE_THRESHOLD
@@ -42,6 +45,7 @@ class PCA3DViewer(QMainWindow):
         init_seg_end_time = self.timestamps[self.segment_size - 1]
         self.pca_segments = [(init_segment_data, init_seg_start_time, init_seg_end_time)]
         self.computed_refs = [(ref_start, smooth_ref_cycle)]
+        self.computed_refs_bound = [(ref_start, ref_end)]
         self.valid_refs = list(self.computed_refs)
         self.all_valid_refs = list(self.computed_refs)
         self.updated_refs = []
@@ -228,6 +232,7 @@ class PCA3DViewer(QMainWindow):
     def update_ref_selector(self):
         self.ref_selector.clear()
         self.computed_refs = sorted(self.computed_refs, key=lambda r: r[0])
+        self.computed_refs_bound = sorted(self.computed_refs_bound, key=lambda r: r[0])
         valid_set = set(ref[0] for ref in self.valid_refs) if hasattr(self, 'valid_refs') else set()
 
         for i, (idx, _) in enumerate(self.computed_refs):
@@ -325,17 +330,26 @@ class PCA3DViewer(QMainWindow):
 
             windowed_pca = self.pca[pca_start_idx:pca_end_idx]
 
-            self.updated_refs, phase, self.phase_time, self.phase0 = ref_cycle_update(
+            self.updated_refs, self.raw_phase, self.phase_time, self.phase0 = ref_cycle_update(
                 windowed_pca, self.timestamps[pca_start_idx:pca_end_idx],
                 self.valid_refs, pca_start_idx,
                 update_interval=self.update_interval,
                 fraction=self.fraction,
                 alpha=self.alpha
             )
-            self.phase = savgol_filter(phase, window_length=51, polyorder=3)
+            self.phase = savgol_filter(self.raw_phase, window_length=51, polyorder=3)
             self.phase_ref_start_idx = self.valid_refs[0][0]
             self.all_valid_refs = sorted(self.valid_refs + self.updated_refs, key=lambda r: r[0])
             self.update_ref_selector()
+
+            save_pca_metadata(
+                self.file_basename,
+                self.computed_refs_bound,
+                self.phase_time,
+                self.phase0,
+                self.raw_phase,
+                self.phase
+            )
 
             segments = []
             for i in range(0, len(windowed_pca), self.segment_size):
@@ -374,6 +388,7 @@ class PCA3DViewer(QMainWindow):
             smooth_ref = smooth_trajectory(new_cycle)
 
             self.computed_refs[ref_index] = (new_ref_start, smooth_ref)
+            self.computed_refs_bound[ref_index] = (new_ref_start, new_ref_end)
             self.recompute_segments_and_ref()
 
         except Exception as e:
@@ -383,6 +398,7 @@ class PCA3DViewer(QMainWindow):
         ref_index = self.ref_selector.currentIndex()
         if 0 <= ref_index < len(self.computed_refs):
             self.computed_refs.pop(ref_index)
+            self.computed_refs_bound.pop(ref_index)
             self.updated_refs = []
             if not self.computed_refs:
                 self.pca_segments = []
@@ -406,6 +422,7 @@ class PCA3DViewer(QMainWindow):
             new_cycle = self.pca[new_ref_start:new_ref_end]
             smooth_ref = smooth_trajectory(new_cycle)
             self.computed_refs.append((new_ref_start, smooth_ref))
+            self.computed_refs_bound.append((new_ref_start, new_ref_end))
             self.recompute_segments_and_ref()
 
         except Exception as e:
@@ -420,6 +437,7 @@ class PCA3DViewer(QMainWindow):
             ref = self.pca[start_idx:end_idx]
             smooth_ref = smooth_trajectory(ref)
             self.computed_refs.append((start_idx, smooth_ref))
+            self.computed_refs_bound.append((start_idx, end_idx))
             if self.preview_line and self.preview_line in self.view.items:
                 self.view.removeItem(self.preview_line)
             self.preview_line = None
@@ -499,3 +517,20 @@ class PCA3DViewer(QMainWindow):
             sampling_rate=1 / SAMPLING_RATE
         )
         self.speed_viewer.show()
+
+def save_pca_metadata(file_basename, computed_ref_bound, phase_time, phase0, raw_phase, phase):
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    save_dir = os.path.join(project_root, "results", file_basename)
+    os.makedirs(save_dir, exist_ok=True)
+
+    np.savez(
+        os.path.join(save_dir, "phase_data.npz"),
+        phase_time=phase_time,
+        phase0=phase0,
+        raw_phase=raw_phase,
+        phase=phase
+    )
+
+    ref_bounds_serializable = [(int(start), int(end)) for start, end in computed_ref_bound]
+    with open(os.path.join(save_dir, "ref_bounds.json"), "w") as f:
+        json.dump(ref_bounds_serializable, f, indent=2)

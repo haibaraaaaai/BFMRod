@@ -1,7 +1,5 @@
 Development To-Do List
 1. Main Priority
-    Save file data.
-
     Try Chi2 step finding.
 
     Toggle speed calculation and rev_window input.
