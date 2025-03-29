@@ -224,6 +224,7 @@ class TDMSViewer(QMainWindow):
         file_path = self.prompt_for_file()
         if file_path:
             self.last_file_path = file_path
+            self.setWindowTitle(f"Viewing: {os.path.basename(self.last_file_path)}")
             self.load_data(file_path)
             self.start_index = 0
             self.window_size = 10_000
