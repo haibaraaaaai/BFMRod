@@ -33,7 +33,8 @@ class PCA3DViewer(QMainWindow):
         self.fraction = 0.025
 
         pca, _ = apply_pca(data)
-        self.pca = smooth_data_with_convolution(pca, CONVOLUTION_WINDOW)
+        savgol_pca = savgol_filter(pca, window_length=CONVOLUTION_WINDOW, polyorder=3, axis=0)
+        self.pca = smooth_data_with_convolution(savgol_pca, CONVOLUTION_WINDOW)
         self.timestamps = timestamps[:len(self.pca)]
 
         ref_start, ref_end = detect_cycle_bounds(self.pca, self.closure_threshold)
