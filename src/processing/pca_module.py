@@ -22,6 +22,7 @@ from config import (
     END_OF_CYCLE_LIMIT,
     CONTINUITY_CONSTRAINT,
 )
+from processing.normalize_channels import normalize_signals
 
 
 # ───────────────────────────────────────────────────────────────
@@ -41,10 +42,10 @@ def apply_pca(smoothed_data, n_components=4):
             - X_pca (np.ndarray): Transformed PCA data (N x 3).
             - pca (PCA): Trained PCA model.
     """
+    smoothed_data_normalized = normalize_signals(smoothed_data, method="percentile", percentile=95)
     pca = PCA(n_components=n_components)
-    X_pca = pca.fit_transform(smoothed_data)
+    X_pca = pca.fit_transform(smoothed_data_normalized)
     return X_pca[:, :3], pca
-
 
 def detect_cycle_bounds(trajectory, closure_threshold=40):
     """

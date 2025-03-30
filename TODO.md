@@ -27,5 +27,11 @@ Development To-Do List
     Is PCA traj distorted? like if a sample is slightly varied in one pca direction, if it's a minor direction shouldn't that correspond to like a really small insignificant change in real space? but in pca 3d it's treated with equal weight as changes in main dir?
     try pca 2d? might bring back degeneracy?
 
-3. List of doable samples:
-    2025.03.13 fileMinArab4
+    fraction 0.025 alpha 0.05 / 0.15?
+
+
+<!-- Try 2D pca
+
+Try ref detection with variacne bias
+
+Find optimal fraction and alpha values and set as default -->
