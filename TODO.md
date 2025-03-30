@@ -1,37 +1,30 @@
-Development To-Do List
-1. Main Priority
-    Try Chi2 step finding.
+Improvements:
+    QOL: Switch off preview button when confirm button is hit.
 
-    Toggle speed calculation and rev_window input.
+    QOL: Cache for repeated calculation to reduce computation load. (Such as if we are making the same update refs with the same computed refs, we should just store that info somewhere, and only start doing computation when we get to timestamps of new computed ref)
 
-    Check transient pauses paper for pause detection.
+    QOL: Optimize fraction and alpha values.
 
-2. Other Ideas
-    Investigate anisotropy vs total intensity (normalize XYZ to [-1, 1]).
+    QOL: Hide or grey out ref cycle when previewing.
 
-    Dynamic Threshold Trigger for ref cycle update:
-        Trigger update if phase error or distance exceeds threshold.
+    QOL: Now instead of erase the view when computed ref = 0, we just display segmented data without ref cycles.
 
-    Backward penalty for indices more than one or two units away?
+    QOL: Increase the speed at which up down arrow keys increase / decrease indices for preview part.
 
-    Cache for repeat calculation?
+    QOL: Try additional smoothing on computed ref cycles, and try ref detection with variance bias base on components.
 
-    Switch off preview when confirm
+    QOL: Allow for a button of no ref or something, basically from where the button is pressed to next ref cycle we use no ref and just pause phase index, this is for the extreme case of pauses in real rotation leading to noise completely taking over and make traj un-trackable.
 
-    Viewing is not updated?
+    QOL: Dynymic threshold trigger for ref cycle update (even manual input trigger) Basically use the same comparison plotted in pca comparison viewer and set it so if peaks in ref misalign with peaks in pca by a factor of 1/4 of the distance from this pca peak to the next or something then we trigger a update perhaps END_OF_CYCLE_LIMIT size before this happens, if still not fixed we flag it and pause later computation and ask for a manual input of ref, then we start from that again (maybe with the help of cache).
+    
+    QOL: Toggle speed calculation and rev_window input.
 
-    Fix update? And more smoothing? Problem is that even exact cycle on pca data is not good ref as it contains lag and noise.
+    Fixes: PCAViewer cannot allocate 3.71 GiB for an array with shape (497750000,) and data type float64, so need a fix for large data sets, not urgent, but will need later.
 
-    PCAViewer error unable to allocate 3.71 GiB for an array with shape (497750000,) and data type float64
+    Ideas: Try Chi2 step finding or other step finding / smoothing techinque on speed.
 
-    Is PCA traj distorted? like if a sample is slightly varied in one pca direction, if it's a minor direction shouldn't that correspond to like a really small insignificant change in real space? but in pca 3d it's treated with equal weight as changes in main dir?
-    try pca 2d? might bring back degeneracy?
+    Ideas: Investigate anisotropy vs total intensity (normalize XYZ to [-1, 1]).
 
-    fraction 0.025 alpha 0.05 / 0.15?
+    Ideas: PCA2D.
 
-
-<!-- Try 2D pca
-
-Try ref detection with variacne bias
-
-Find optimal fraction and alpha values and set as default -->
+    Ideas: Pause detection.
