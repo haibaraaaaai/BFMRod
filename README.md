@@ -39,6 +39,34 @@ python -m main
 
 ---
 
+## Checking Out Last Working Version
+To test or work on the last working version with a certain commit message "XXXXX":
+
+1. **Find the commit hash** for that update:
+```bash
+git log --oneline
+```
+Look for a line like with the commit message:
+```
+abc1234 XXXXX
+```
+
+2. **Check out that commit into a new branch:**
+```bash
+git checkout -b xxxx abc1234
+```
+
+> This keeps your current branch intact and creates a new one based on the selected commit.
+
+3. To go back to your main branch later:
+```bash
+git checkout main
+```
+
+This is useful for pinpointing working states while still keeping a backup version for you to work on and make changes.
+
+---
+
 ## GUI Workflow
 1. Click **"Open TDMS"** to load a `.tdms` file.
 2. Use checkboxes to select channels for plotting.
