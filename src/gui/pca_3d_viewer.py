@@ -61,7 +61,8 @@ class PCA3DViewer(QMainWindow):
         self.phase_ref_start_idx = None
 
         self._init_ui()
-        self.plot_pca_segment(self.pca_segments[0])
+        self.pca_index = 0
+        self.plot_pca_segment(self.pca_segments[0], segment_index=0)
 
     def _init_ui(self):
         self.view = gl.GLViewWidget()
@@ -284,11 +285,15 @@ class PCA3DViewer(QMainWindow):
             )
         )
         self.pca_index = closest_segment_index
-        self.plot_pca_segment(self.pca_segments[self.pca_index])
+        self.plot_pca_segment(self.pca_segments[self.pca_index], segment_index=self.pca_index)
 
-    def plot_pca_segment(self, pca_segment):
+    def plot_pca_segment(self, pca_segment, segment_index=None):
         try:
             X_pca, seg_start_time, seg_end_time = pca_segment
+
+            # If segment_index is provided, update self.pca_index
+            if segment_index is not None:
+                self.pca_index = segment_index
 
             if self.pca_line and self.pca_line in self.view.items:
                 self.view.removeItem(self.pca_line)
@@ -326,7 +331,7 @@ class PCA3DViewer(QMainWindow):
                 refs_in_segment = [closest_ref]
 
             # Color palette
-            ref_colors = [(1, 0, 0, 1), (0, 0.6, 0, 1), (1, 0.5, 0, 1), (0.5, 0, 1, 1)]  # red, green, orange, purple
+            ref_colors = [(1, 0, 0, 1), (0, 0.6, 0, 1), (1, 0.5, 0, 1), (0.5, 0, 1, 1)]
 
             # Plot all selected refs
             for i, (ref_start_idx, ref_cycle) in enumerate(refs_in_segment):
@@ -339,34 +344,26 @@ class PCA3DViewer(QMainWindow):
             selected_idx = self.ref_selector.currentIndex()
             selected_start = None
 
-            # 1. Try to match selected ref from dropdown (by index) to computed_refs
             if 0 <= selected_idx < len(self.computed_refs_bound):
                 selected_start, selected_end = self.computed_refs_bound[selected_idx]
                 if any(r[0] == selected_start for r in refs_in_segment):
-                    # Selected ref is visible in current segment
                     self.manual_start_input.setText(str(selected_start))
                     self.manual_end_input.setText(str(selected_end))
-                    return  # ✅ Done
-
-            # 2. Multiple refs in view — try to pick a computed one
-            for ref_start, _ in refs_in_segment:
-                match = next(((s, e) for (s, e) in self.computed_refs_bound if s == ref_start), None)
-                if match:
-                    self.manual_start_input.setText(str(match[0]))
-                    self.manual_end_input.setText(str(match[1]))
-                    return  # ✅ Done
-
-            # Fallback — just use the first visible one
-            if refs_in_segment:
-                fallback_start = refs_in_segment[0][0]
-                self.manual_start_input.setText(str(fallback_start))
-                self.manual_end_input.setText(str(fallback_start + len(refs_in_segment[0][1])))
+            elif refs_in_segment:
+                for ref_start, _ in refs_in_segment:
+                    match = next(((s, e) for (s, e) in self.computed_refs_bound if s == ref_start), None)
+                    if match:
+                        self.manual_start_input.setText(str(match[0]))
+                        self.manual_end_input.setText(str(match[1]))
+                        break
+                else:
+                    fallback_start = refs_in_segment[0][0]
+                    self.manual_start_input.setText(str(fallback_start))
+                    self.manual_end_input.setText(str(fallback_start + len(refs_in_segment[0][1])))
             else:
-                # No refs at all
                 self.manual_start_input.setText("0")
                 self.manual_end_input.setText("0")
 
-            # Update window title
             self.setWindowTitle(
                 f"3D PCA Viewer - Segment {self.pca_index + 1}/{len(self.pca_segments)} "
                 f"[{seg_start_time:.3f}s – {seg_end_time:.3f}s]"
@@ -436,7 +433,7 @@ class PCA3DViewer(QMainWindow):
             self.pca_segments = segments
             self.pca_index = 0
             if self.pca_segments:
-                self.plot_pca_segment(self.pca_segments[0])
+                self.plot_pca_segment(self.pca_segments[0], segment_index=0)
 
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Update Error", f"Failed to update PCA segments:\n{e}")
@@ -541,12 +538,13 @@ class PCA3DViewer(QMainWindow):
     def prev_segment(self):
         if self.pca_index > 0:
             self.pca_index -= 1
-            self.plot_pca_segment(self.pca_segments[self.pca_index])
+            self.plot_pca_segment(self.pca_segments[self.pca_index], segment_index=self.pca_index)
+
 
     def next_segment(self):
         if self.pca_index < len(self.pca_segments) - 1:
             self.pca_index += 1
-            self.plot_pca_segment(self.pca_segments[self.pca_index])
+            self.plot_pca_segment(self.pca_segments[self.pca_index], segment_index=self.pca_index)
 
     def compare_pca_to_ref_phase(self):
         try:
