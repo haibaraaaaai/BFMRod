@@ -3,8 +3,6 @@ Improvements:
 
     QOL: Optimize fraction and alpha values.
 
-    QOL: Now instead of erase the view when computed ref = 0, we just display segmented data without ref cycles.
-
     QOL: Try additional smoothing on computed ref cycles.
 
     QOL: Allow for a button of No update, this is for the extreme case of pauses in real rotation leading to noise completely taking over and make traj un-trackable.
@@ -20,5 +18,3 @@ Improvements:
     Ideas: Investigate anisotropy vs total intensity (normalize XYZ to [-1, 1]).
 
     Ideas: Pause detection.
-
-    Ideas: Check how ref cycle is smoothed to ensure closure.
