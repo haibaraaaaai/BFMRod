@@ -357,9 +357,14 @@ class PCA3DViewer(QMainWindow):
                     return  # ✅ Done
 
             # Fallback — just use the first visible one
-            fallback_start = refs_in_segment[0][0]
-            self.manual_start_input.setText(str(fallback_start))
-            self.manual_end_input.setText(str(fallback_start + len(refs_in_segment[0][1])))
+            if refs_in_segment:
+                fallback_start = refs_in_segment[0][0]
+                self.manual_start_input.setText(str(fallback_start))
+                self.manual_end_input.setText(str(fallback_start + len(refs_in_segment[0][1])))
+            else:
+                # No refs at all
+                self.manual_start_input.setText("0")
+                self.manual_end_input.setText("0")
 
             # Update window title
             self.setWindowTitle(
@@ -468,10 +473,28 @@ class PCA3DViewer(QMainWindow):
             self.computed_refs.pop(ref_index)
             self.computed_refs_bound.pop(ref_index)
             self.updated_refs = []
+
+            self.update_ref_selector()
+
             if not self.computed_refs:
-                self.pca_segments = []
-                self.update_ref_selector()
-                self.view.clear()
+                # Clear all reference lines from the view
+                for line in self.ref_lines:
+                    if line in self.view.items:
+                        self.view.removeItem(line)
+                self.ref_lines = []
+                self.valid_refs = []
+                self.all_valid_refs = []
+
+                # # Remove preview if showing
+                # if self.preview_line and self.preview_line in self.view.items:
+                #     self.view.removeItem(self.preview_line)
+                #     self.preview_line = None
+                #     self.preview_mode = False
+                #     self.preview_button.setText("Preview Manual Ref")
+
+                # Keep showing current PCA segment (just without ref)
+                if self.pca_segments:
+                    self.plot_pca_segment(self.pca_segments[self.pca_index])
             else:
                 self.recompute_segments_and_ref()
 
