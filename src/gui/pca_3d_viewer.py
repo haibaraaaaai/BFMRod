@@ -71,11 +71,12 @@ class PCA3DViewer(QMainWindow):
         self.view.addItem(axis)
 
         self.pca_line = None
-        self.ref_line = None
+        self.ref_lines = []
         self.preview_line = None
 
         self.start_time_input = QLineEdit("0.0")
-        self.end_time_input = QLineEdit(f"{self.timestamps[-1]:.3f}")
+        initial_end_time = min(self.timestamps[-1], 10.0)
+        self.end_time_input = QLineEdit(f"{initial_end_time:.3f}")
         self.segment_duration_input = QLineEdit(str(self.segment_duration))
         self.update_interval_input = QLineEdit(str(self.update_interval))
 
@@ -173,24 +174,30 @@ class PCA3DViewer(QMainWindow):
 
         QShortcut(QKeySequence(QtCore.Qt.Key.Key_Left), self).activated.connect(self.prev_segment)
         QShortcut(QKeySequence(QtCore.Qt.Key.Key_Right), self).activated.connect(self.next_segment)
-        QShortcut(QKeySequence(QtCore.Qt.Key.Key_Up), self).activated.connect(self._nudge_up)
-        QShortcut(QKeySequence(QtCore.Qt.Key.Key_Down), self).activated.connect(self._nudge_down)
 
-    def _nudge_up(self):
-        self._nudge_focused(1)
+        self.installEventFilter(self)
 
-    def _nudge_down(self):
-        self._nudge_focused(-1)
+    def eventFilter(self, source, event):
+        if event.type() == QtCore.QEvent.Type.KeyPress:
+            if QtWidgets.QApplication.focusWidget() in [self.manual_start_input, self.manual_end_input]:
+                step = 50 if event.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier else 1
+                if event.key() == QtCore.Qt.Key.Key_Up:
+                    self._nudge_focused(step)
+                    return True
+                elif event.key() == QtCore.Qt.Key.Key_Down:
+                    self._nudge_focused(-step)
+                    return True
+        return super().eventFilter(source, event)
 
-    def _nudge_focused(self, delta):
+    def _nudge_focused(self, step):
         focus = QtWidgets.QApplication.focusWidget()
         if isinstance(focus, QLineEdit) and (focus == self.manual_start_input or focus == self.manual_end_input):
-            self._nudge_index(focus, delta)
+            self._nudge_index(focus, step)
 
-    def _nudge_index(self, line_edit, delta):
+    def _nudge_index(self, line_edit, step):
         try:
             val = int(line_edit.text())
-            new_val = val + delta
+            new_val = val + step
             line_edit.setText(str(new_val))
             if self.preview_mode:
                 self._update_preview_line()
@@ -206,10 +213,20 @@ class PCA3DViewer(QMainWindow):
             if not self.preview_mode:
                 self.preview_mode = True
                 self.preview_button.setText("Cancel Preview")
+
+                if hasattr(self, "ref_lines"):
+                    for line in self.ref_lines:
+                        line.setVisible(False)
+
                 self._update_preview_line()
             else:
                 self.preview_mode = False
                 self.preview_button.setText("Preview Manual Ref")
+
+                if hasattr(self, "ref_lines"):
+                    for line in self.ref_lines:
+                        line.setVisible(True)
+
                 if self.preview_line and self.preview_line in self.view.items:
                     self.view.removeItem(self.preview_line)
                 self.preview_line = None
@@ -231,6 +248,7 @@ class PCA3DViewer(QMainWindow):
             pass
 
     def update_ref_selector(self):
+        self.ref_selector.blockSignals(True)
         self.ref_selector.clear()
         self.computed_refs = sorted(self.computed_refs, key=lambda r: r[0])
         self.computed_refs_bound = sorted(self.computed_refs_bound, key=lambda r: r[0])
@@ -242,6 +260,8 @@ class PCA3DViewer(QMainWindow):
             if idx not in valid_set:
                 label += " (not in range)"
             self.ref_selector.addItem(label)
+
+        self.ref_selector.blockSignals(False)
 
     def jump_to_ref_cycle(self, index):
         if index < 0 or index >= len(self.computed_refs):
@@ -272,29 +292,76 @@ class PCA3DViewer(QMainWindow):
 
             if self.pca_line and self.pca_line in self.view.items:
                 self.view.removeItem(self.pca_line)
-            if self.ref_line and self.ref_line in self.view.items:
-                self.view.removeItem(self.ref_line)
 
+            if hasattr(self, "ref_lines"):
+                for line in self.ref_lines:
+                    if line in self.view.items:
+                        self.view.removeItem(line)
+            else:
+                self.ref_lines = []
+
+            self.ref_lines = []
+
+            # Plot PCA segment
             self.pca_line = gl.GLLinePlotItem(pos=X_pca, color=(0, 0, 1, 1), width=2.0, antialias=True)
             self.view.addItem(self.pca_line)
 
-            segment_center_time = (seg_start_time + seg_end_time) / 2
-            segment_center_idx = np.searchsorted(self.timestamps, segment_center_time)
-            closest_ref = min(
-                self.all_valid_refs,
-                key=lambda rc: abs(rc[0] - segment_center_idx)
-            ) if self.all_valid_refs else None
+            # Define segment time range
+            segment_start_time = seg_start_time
+            segment_end_time = seg_end_time
 
-            if closest_ref is not None:
-                ref_start_idx, ref_cycle = closest_ref
-                self.ref_line = gl.GLLinePlotItem(pos=ref_cycle, color=(1, 0, 0, 1), width=2.0, antialias=True)
-                self.view.addItem(self.ref_line)
+            # Find refs within this time range
+            refs_in_segment = [
+                (idx, cycle)
+                for (idx, cycle) in self.all_valid_refs
+                if segment_start_time <= self.timestamps[idx] <= segment_end_time
+            ]
 
-            if not self.preview_mode:
-                if self.manual_start_input and self.manual_end_input:
-                    self.manual_start_input.setText(str(ref_start_idx))
-                    self.manual_end_input.setText(str(ref_start_idx + len(ref_cycle)))
+            # If none found, fall back to closest ref
+            if not refs_in_segment and self.all_valid_refs:
+                closest_ref = min(
+                    self.all_valid_refs,
+                    key=lambda rc: abs(self.timestamps[rc[0]] - segment_start_time)
+                )
+                refs_in_segment = [closest_ref]
 
+            # Color palette
+            ref_colors = [(1, 0, 0, 1), (0, 0.6, 0, 1), (1, 0.5, 0, 1), (0.5, 0, 1, 1)]  # red, green, orange, purple
+
+            # Plot all selected refs
+            for i, (ref_start_idx, ref_cycle) in enumerate(refs_in_segment):
+                color = ref_colors[i % len(ref_colors)]
+                line = gl.GLLinePlotItem(pos=ref_cycle, color=color, width=2.0, antialias=True)
+                self.view.addItem(line)
+                self.ref_lines.append(line)
+
+            # Update manual input fields
+            selected_idx = self.ref_selector.currentIndex()
+            selected_start = None
+
+            # 1. Try to match selected ref from dropdown (by index) to computed_refs
+            if 0 <= selected_idx < len(self.computed_refs_bound):
+                selected_start, selected_end = self.computed_refs_bound[selected_idx]
+                if any(r[0] == selected_start for r in refs_in_segment):
+                    # Selected ref is visible in current segment
+                    self.manual_start_input.setText(str(selected_start))
+                    self.manual_end_input.setText(str(selected_end))
+                    return  # ✅ Done
+
+            # 2. Multiple refs in view — try to pick a computed one
+            for ref_start, _ in refs_in_segment:
+                match = next(((s, e) for (s, e) in self.computed_refs_bound if s == ref_start), None)
+                if match:
+                    self.manual_start_input.setText(str(match[0]))
+                    self.manual_end_input.setText(str(match[1]))
+                    return  # ✅ Done
+
+            # Fallback — just use the first visible one
+            fallback_start = refs_in_segment[0][0]
+            self.manual_start_input.setText(str(fallback_start))
+            self.manual_end_input.setText(str(fallback_start + len(refs_in_segment[0][1])))
+
+            # Update window title
             self.setWindowTitle(
                 f"3D PCA Viewer - Segment {self.pca_index + 1}/{len(self.pca_segments)} "
                 f"[{seg_start_time:.3f}s – {seg_end_time:.3f}s]"
@@ -442,6 +509,8 @@ class PCA3DViewer(QMainWindow):
             if self.preview_line and self.preview_line in self.view.items:
                 self.view.removeItem(self.preview_line)
             self.preview_line = None
+            self.preview_mode = False
+            self.preview_button.setText("Preview Manual Ref")
             self.recompute_segments_and_ref()
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Manual Confirm Error", f"Failed to confirm manual ref cycle:\n{e}")
