@@ -5,7 +5,6 @@ import numpy as np
 
 @dataclass
 class SegmentCacheEntry:
-    ref_bounds: Tuple[Tuple[int, int], Tuple[int, int]]  # ((start1, end1), (start2, end2)) of computed refs
     updated_refs: List[Tuple[int, np.ndarray]]  # list of (start_idx, smoothed_ref)
     phase0: np.ndarray  # unwrapped phase indices (concatenated 0-based indices)
 
@@ -13,6 +12,17 @@ class SegmentCacheEntry:
 class RefUpdateCacheManager:
     def __init__(self):
         self.cache: Dict[Tuple[Tuple[Tuple[int, int], Tuple[int, int]], float, float, float], SegmentCacheEntry] = {}
+
+    def _make_key(
+        self,
+        ref_bounds: Tuple[Tuple[int, int], Tuple[int, int]],
+        update_interval: float,
+        alpha: float,
+        fraction: float
+    ) -> Tuple[Tuple[Tuple[int, int], Tuple[int, int]], float, float, float]:
+        ref1 = tuple(map(int, ref_bounds[0]))
+        ref2 = tuple(map(int, ref_bounds[1]))
+        return (ref1, ref2), float(update_interval), float(alpha), float(fraction)
 
     def add_entry(
         self,
@@ -22,7 +32,7 @@ class RefUpdateCacheManager:
         fraction: float,
         entry: SegmentCacheEntry,
     ):
-        key = (ref_bounds, update_interval, alpha, fraction)
+        key = self._make_key(ref_bounds, update_interval, alpha, fraction)
         self.cache[key] = entry
 
     def get_entry(
@@ -32,7 +42,7 @@ class RefUpdateCacheManager:
         alpha: float,
         fraction: float,
     ) -> Optional[SegmentCacheEntry]:
-        key = (ref_bounds, update_interval, alpha, fraction)
+        key = self._make_key(ref_bounds, update_interval, alpha, fraction)
         return self.cache.get(key)
 
     def find_matching_pairs(
@@ -49,7 +59,7 @@ class RefUpdateCacheManager:
         entries = []
         for i in range(len(computed_bounds) - 1):
             pair = (computed_bounds[i], computed_bounds[i + 1])
-            key = (pair, update_interval, alpha, fraction)
+            key = self._make_key(pair, update_interval, alpha, fraction)
             if key in self.cache:
                 entries.append(self.cache[key])
         return entries
