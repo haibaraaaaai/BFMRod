@@ -2,7 +2,7 @@
 
 A graphical tool for visualizing TDMS signal data, performing PCA-based phase analysis, and viewing instantaneous frequency in 2D/3D.
 
-The last working version is the one with commit message "Bug fixes" with commit hash 546661a.
+The last working version is the one with commit message "Cache Done!"
 
 ---
 
