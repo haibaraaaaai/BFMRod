@@ -50,7 +50,6 @@ class PCA3DViewer(QMainWindow):
         self.computed_refs_bound = [(ref_start, ref_end)]
         self.valid_refs = list(self.computed_refs)
         self.all_valid_refs = list(self.computed_refs)
-        self.updated_refs = []
         self.pca_index = 0
 
         self.manual_start_idx = ref_start
@@ -60,7 +59,6 @@ class PCA3DViewer(QMainWindow):
         self.preview_mode = False
 
         self.phase_ref_start_idx = None
-        self.phase0 = np.array([], dtype=np.int32)
 
         self.ref_update_cache = RefUpdateCacheManager()
 
@@ -295,7 +293,6 @@ class PCA3DViewer(QMainWindow):
         try:
             X_pca, seg_start_time, seg_end_time = pca_segment
 
-            # If segment_index is provided, update self.pca_index
             if segment_index is not None:
                 self.pca_index = segment_index
 
@@ -315,58 +312,43 @@ class PCA3DViewer(QMainWindow):
             self.pca_line = gl.GLLinePlotItem(pos=X_pca, color=(0, 0, 1, 1), width=2.0, antialias=True)
             self.view.addItem(self.pca_line)
 
-            # Define segment time range
-            segment_start_time = seg_start_time
-            segment_end_time = seg_end_time
-
-            # Find refs within this time range
+            # Plot relevant refs
             refs_in_segment = [
                 (idx, cycle)
                 for (idx, cycle) in self.all_valid_refs
-                if segment_start_time <= self.timestamps[idx] <= segment_end_time
+                if seg_start_time <= self.timestamps[idx] <= seg_end_time
             ]
-
-            # If none found, fall back to closest ref
             if not refs_in_segment and self.all_valid_refs:
                 closest_ref = min(
                     self.all_valid_refs,
-                    key=lambda rc: abs(self.timestamps[rc[0]] - segment_start_time)
+                    key=lambda rc: abs(self.timestamps[rc[0]] - seg_start_time)
                 )
                 refs_in_segment = [closest_ref]
 
-            # Color palette
             ref_colors = [(1, 0, 0, 1), (0, 0.6, 0, 1), (1, 0.5, 0, 1), (0.5, 0, 1, 1)]
-
-            # Plot all selected refs
             for i, (_, ref_cycle) in enumerate(refs_in_segment):
                 color = ref_colors[i % len(ref_colors)]
                 line = gl.GLLinePlotItem(pos=ref_cycle, color=color, width=2.0, antialias=True)
                 self.view.addItem(line)
                 self.ref_lines.append(line)
 
-            # Update manual input fields
-            selected_idx = self.ref_selector.currentIndex()
-            selected_start = None
+            # Compute index range for the segment
+            seg_start_idx = np.searchsorted(self.timestamps, seg_start_time, side='left')
+            seg_end_idx = np.searchsorted(self.timestamps, seg_end_time, side='right')
 
-            if 0 <= selected_idx < len(self.computed_refs_bound):
-                selected_start, selected_end = self.computed_refs_bound[selected_idx]
-                if any(r[0] == selected_start for r in refs_in_segment):
-                    self.manual_start_input.setText(str(selected_start))
-                    self.manual_end_input.setText(str(selected_end))
-            elif refs_in_segment:
-                for ref_start, _ in refs_in_segment:
-                    match = next(((s, e) for (s, e) in self.computed_refs_bound if s == ref_start), None)
-                    if match:
-                        self.manual_start_input.setText(str(match[0]))
-                        self.manual_end_input.setText(str(match[1]))
-                        break
-                else:
-                    fallback_start = refs_in_segment[0][0]
-                    self.manual_start_input.setText(str(fallback_start))
-                    self.manual_end_input.setText(str(fallback_start + len(refs_in_segment[0][1])))
+            # Try to find computed ref bound inside segment
+            matched_bound = None
+            for bound in self.computed_refs_bound:
+                if seg_start_idx <= bound[0] and bound[1] <= seg_end_idx:
+                    matched_bound = bound
+                    break
+
+            if matched_bound:
+                self.manual_start_input.setText(str(matched_bound[0]))
+                self.manual_end_input.setText(str(matched_bound[1]))
             else:
-                self.manual_start_input.setText("0")
-                self.manual_end_input.setText("0")
+                self.manual_start_input.setText(str(seg_start_idx))
+                self.manual_end_input.setText(str(seg_start_idx + 1000))
 
             self.setWindowTitle(
                 f"3D PCA Viewer - Segment {self.pca_index + 1}/{len(self.pca_segments)} "
@@ -376,16 +358,14 @@ class PCA3DViewer(QMainWindow):
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Plotting Error", f"Error plotting PCA segment:\n{e}")
 
-    def _shift_phase(self, phase0, previous_phase):
-        if previous_phase is None:
-            return phase0
-        return (phase0 + previous_phase) % REFERENCE_NUM_POINTS
-
     def recompute_segments_and_ref(self):
         try:
             if not self.computed_refs:
                 QtWidgets.QMessageBox.warning(self, "Missing Ref", "Cannot update without any reference cycles.")
                 return
+
+            self.phase0 = np.array([], dtype=np.int32)
+            self.updated_refs = []
 
             start_time = float(self.start_time_input.text())
             end_time = float(self.end_time_input.text())
@@ -423,8 +403,6 @@ class PCA3DViewer(QMainWindow):
             if not self.valid_refs:
                 QtWidgets.QMessageBox.warning(self, "No Valid Ref", "No valid reference cycles found in the selected time range.")
                 return
-            
-            previous_phase = None
 
             for i in range(len(ref_index_list) - 1):
                 pair = (ref_index_list[i], ref_index_list[i + 1])
@@ -432,23 +410,18 @@ class PCA3DViewer(QMainWindow):
 
                 if cached:
                     self.updated_refs += cached.updated_refs
-                    phase0_corrected = self._shift_phase(cached.phase0, previous_phase)
-                    self.phase0 = np.concatenate((self.phase0, phase0_corrected))
-                    previous_phase = self.phase0[-1]
-                    print(f"[CACHE] Used cached segment: {pair}")
+                    self.phase0 = np.concatenate((self.phase0, cached.phase0))
                     continue
                 else:
                     windowed_pca_cache = self.pca[self.valid_refs[i][0]:self.valid_refs[i+1][0]]
                     updated_refs, phase0 = ref_cycle_update(
-                        windowed_pca_cache, self.valid_refs[i][1], 
-                        pca_start_idx = self.valid_refs[i][0],
+                        windowed_pca_cache, self.valid_refs[i],
                         update_interval=self.update_interval,
                         fraction=self.fraction,
                         alpha=self.alpha,
                     )
                     self.updated_refs += updated_refs
-                    phase0_corrected = self._shift_phase(cached.phase0, previous_phase)
-                    self.phase0 = np.concatenate((self.phase0, phase0_corrected))
+                    self.phase0 = np.concatenate((self.phase0, phase0))
                     entry = SegmentCacheEntry(
                         updated_refs=updated_refs,
                         phase0=phase0,
@@ -456,19 +429,16 @@ class PCA3DViewer(QMainWindow):
                     self.ref_update_cache.add_entry(
                         pair, self.update_interval, self.alpha, self.fraction, entry
                     )
-                previous_phase = self.phase0[-1]
-            
+
             windowed_pca_cache = self.pca[self.valid_refs[-1][0]:pca_end_idx]
             updated_refs, phase0 = ref_cycle_update(
-                windowed_pca_cache, self.valid_refs[-1][1], 
-                pca_start_idx = self.valid_refs[-1][0],
+                windowed_pca_cache, self.valid_refs[-1],
                 update_interval=self.update_interval,
                 fraction=self.fraction,
                 alpha=self.alpha,
             )
             self.updated_refs += updated_refs
-            phase0_corrected = self._shift_phase(cached.phase0, previous_phase)
-            self.phase0 = np.concatenate((self.phase0, phase0_corrected))
+            self.phase0 = np.concatenate((self.phase0, phase0))
 
             self.phase_time = self.timestamps[self.valid_refs[0][0]:pca_end_idx]
             phase = self.phase0 / REFERENCE_NUM_POINTS * 2 * np.pi
@@ -491,16 +461,23 @@ class PCA3DViewer(QMainWindow):
             windowed_pca = self.pca[self.valid_refs[0][0]:pca_end_idx]
             for i in range(0, len(windowed_pca), self.segment_size):
                 seg = windowed_pca[i:i+self.segment_size]
-                if len(seg) < self.segment_size:
-                    break
                 t0 = self.timestamps[pca_start_idx + i]
-                t1 = self.timestamps[pca_start_idx + i + self.segment_size - 1]
+                t1 = self.timestamps[pca_start_idx + i + len(seg) - 1]
                 segments.append((seg, t0, t1))
 
             self.pca_segments = segments
             self.pca_index = 0
             if self.pca_segments:
                 self.plot_pca_segment(self.pca_segments[0], segment_index=0)
+
+            # Debugging information
+            # print(f"[DEBUG] phase_time len: {len(self.phase_time)}")
+            # print(f"[DEBUG] phase0 len: {len(self.phase0)}")
+            # print(f"[DEBUG] mismatch = {len(self.phase_time) != len(self.phase0)}")
+            # print(f"[DEBUG] updated ref starts: {[r[0] for r in self.updated_refs]}")
+            # print(f"[DEBUG] valid_ref starts: {[r[0] for r in self.valid_refs]}")
+            # print(f"[DEBUG] ref_index_list: {ref_index_list}")
+            # print(f"[DEBUG] total timestamp range: {pca_end_idx - self.valid_refs[0][0]}")
 
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "Update Error", f"Failed to update PCA segments:\n{e}")
