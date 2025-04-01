@@ -167,7 +167,7 @@ def assign_phase_indices(trajectory, reference_cycle, prev_phase=None):
 
     return index
 
-def ref_cycle_update(X_pca, timestamps, computed_refs, pca_start_idx, update_interval, fraction=0.025, alpha=0.2):
+def ref_cycle_update(X_pca, computed_refs, pca_start_idx, update_interval, fraction=0.025, alpha=0.2):
     """Assign phases, update reference cycles from computed_refs, return unwrapped phase over time."""
     update_sample_size = int(update_interval * SAMPLING_RATE)
     total_samples_pca = X_pca.shape[0]
@@ -231,8 +231,4 @@ def ref_cycle_update(X_pca, timestamps, computed_refs, pca_start_idx, update_int
 
         current_idx += 1
 
-    phase = phase0 / len(smooth_ref_cycle) * 2 * np.pi
-    phase = np.unwrap(phase)
-    phase_time = timestamps[:len(phase)]
-
-    return updated_refs, phase, phase_time, phase0
+    return updated_refs, phase0
