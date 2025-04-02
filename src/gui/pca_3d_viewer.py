@@ -104,17 +104,14 @@ class PCA3DViewer(QMainWindow):
         self.add_button = QPushButton("Add Ref Cycle")
         self.add_button.clicked.connect(self.add_ref_cycle)
 
-        self.manual_start_input = QLineEdit(str(self.manual_start_idx))
-        self.manual_end_input = QLineEdit(str(self.manual_end_idx))
+        self.manual_start_input = ArrowNudgeLineEdit(str(self.manual_start_idx), on_nudge=self._nudge_index)
+        self.manual_end_input = ArrowNudgeLineEdit(str(self.manual_end_idx), on_nudge=self._nudge_index)
         self.manual_start_label = QLabel("Start Index:")
         self.manual_end_label = QLabel("End Index:")
         self.preview_button = QPushButton("Preview Manual Ref")
         self.preview_button.clicked.connect(self.preview_manual_ref)
         self.confirm_button = QPushButton("Confirm Manual Ref")
         self.confirm_button.clicked.connect(self.confirm_manual_ref)
-
-        self.manual_start_input.textChanged.connect(self._on_manual_input_changed)
-        self.manual_end_input.textChanged.connect(self._on_manual_input_changed)
 
         button_layout = QHBoxLayout()
         for widget in [
@@ -180,36 +177,16 @@ class PCA3DViewer(QMainWindow):
 
         self.installEventFilter(self)
 
-    def eventFilter(self, source, event):
-        if event.type() == QtCore.QEvent.Type.KeyPress:
-            if QtWidgets.QApplication.focusWidget() in [self.manual_start_input, self.manual_end_input]:
-                step = 50 if event.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier else 1
-                if event.key() == QtCore.Qt.Key.Key_Up:
-                    self._nudge_focused(step)
-                    return True
-                elif event.key() == QtCore.Qt.Key.Key_Down:
-                    self._nudge_focused(-step)
-                    return True
-        return super().eventFilter(source, event)
-
-    def _nudge_focused(self, step):
-        focus = QtWidgets.QApplication.focusWidget()
-        if isinstance(focus, QLineEdit) and (focus == self.manual_start_input or focus == self.manual_end_input):
-            self._nudge_index(focus, step)
-
     def _nudge_index(self, line_edit, step):
         try:
             val = int(line_edit.text())
             new_val = val + step
-            line_edit.setText(str(new_val))
+            if new_val != val:
+                line_edit.setText(str(new_val))
             if self.preview_mode:
                 self._update_preview_line()
         except ValueError:
             pass
-
-    def _on_manual_input_changed(self):
-        if self.preview_mode:
-            self._update_preview_line()
 
     def preview_manual_ref(self):
         try:
@@ -364,7 +341,7 @@ class PCA3DViewer(QMainWindow):
                 QtWidgets.QMessageBox.warning(self, "Missing Ref", "Cannot update without any reference cycles.")
                 return
 
-            self.phase0 = np.array([], dtype=np.int32)
+            self.phase0 = np.array([], dtype=np.uint8)
             self.updated_refs = []
 
             start_time = float(self.start_time_input.text())
@@ -442,8 +419,8 @@ class PCA3DViewer(QMainWindow):
 
             self.phase_time = self.timestamps[self.valid_refs[0][0]:pca_end_idx]
             phase = self.phase0 / REFERENCE_NUM_POINTS * 2 * np.pi
-            self.raw_phase = np.unwrap(phase)
-            self.phase = savgol_filter(self.raw_phase, window_length=51, polyorder=3)
+            raw_phase = np.unwrap(phase)
+            self.phase = savgol_filter(raw_phase, window_length=51, polyorder=3)
             self.phase_ref_start_idx = self.valid_refs[0][0]
             self.all_valid_refs = sorted(self.valid_refs + self.updated_refs, key=lambda r: r[0])
             self.update_ref_selector()
@@ -452,9 +429,7 @@ class PCA3DViewer(QMainWindow):
                 self.file_basename,
                 self.computed_refs_bound,
                 self.phase_time,
-                self.phase0,
-                self.raw_phase,
-                self.phase
+                self.phase0
             )
 
             segments = []
@@ -653,19 +628,51 @@ class PCA3DViewer(QMainWindow):
         )
         self.speed_viewer.show()
 
-def save_pca_metadata(file_basename, computed_ref_bound, phase_time, phase0, raw_phase, phase):
+class ArrowNudgeLineEdit(QLineEdit):
+    def __init__(self, *args, on_nudge=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.on_nudge = on_nudge  # Callback function with direction
+
+    def keyPressEvent(self, event):
+        key = event.key()
+        step = 50 if event.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier else 1
+        if key == QtCore.Qt.Key.Key_Up:
+            if self.on_nudge:
+                self.on_nudge(self, step)
+            event.accept()
+        elif key == QtCore.Qt.Key.Key_Down:
+            if self.on_nudge:
+                self.on_nudge(self, -step)
+            event.accept()
+        else:
+            super().keyPressEvent(event)
+
+def save_pca_metadata(file_basename, computed_ref_bound, phase_time, phase0):
+    """
+    Save minimal PCA metadata to disk for future speed analysis.
+    Only saves:
+    - computed_ref_bound (to .json)
+    - phase_time and phase0 (to compressed .npz)
+    """
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
     save_dir = os.path.join(project_root, "results", file_basename)
     os.makedirs(save_dir, exist_ok=True)
 
-    np.savez(
+    # --- Diagnostic print for data types and size ---
+    print("[INFO] Saving phase metadata:")
+    print(f"  - phase_time dtype: {phase_time.dtype}, shape: {phase_time.shape}, size: {phase_time.nbytes / 1e6:.2f} MB")
+    print(f"  - phase0 dtype: {phase0.dtype}, shape: {phase0.shape}, size: {phase0.nbytes / 1e6:.2f} MB")
+
+    # Save only what's needed for downstream speed analysis
+    np.savez_compressed(
         os.path.join(save_dir, "phase_data.npz"),
         phase_time=phase_time,
         phase0=phase0,
-        raw_phase=raw_phase,
-        phase=phase
     )
 
+    # Save ref bounds as JSON
     ref_bounds_serializable = [(int(start), int(end)) for start, end in computed_ref_bound]
     with open(os.path.join(save_dir, "ref_bounds.json"), "w") as f:
         json.dump(ref_bounds_serializable, f, indent=2)
+
+    print(f"[SAVE] Metadata saved to: {save_dir}")

@@ -4,7 +4,7 @@ import os
 
 # --- Settings ---
 GROUP_REVS = 1  # Number of revolutions to average over
-
+REFERENCE_NUM_POINTS = 200  # Used to convert phase0 to float phase
 
 def compute_revolution_frequency(phase, phase_time, group_revs=GROUP_REVS):
     """
@@ -50,8 +50,12 @@ def compute_revolution_frequency(phase, phase_time, group_revs=GROUP_REVS):
 def analyze_single_file(npz_path):
     try:
         data = np.load(npz_path)
-        phase = data["phase"]
+        phase0 = data["phase0"]
         phase_time = data["phase_time"]
+
+        # Convert to continuous float phase
+        phase = phase0 / REFERENCE_NUM_POINTS * 2 * np.pi
+        phase = np.unwrap(phase)
 
         # Compute revolution-based frequency
         t, s = compute_revolution_frequency(phase, phase_time)
@@ -90,5 +94,5 @@ def analyze_single_file(npz_path):
 
 if __name__ == "__main__":
     # Change this path to your phase_data.npz
-    path = "results backup/2025.03.20 patricia/file16/phase_data.npz"
+    path = "results/data/file/phase_data.npz"
     analyze_single_file(path)
