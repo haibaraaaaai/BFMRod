@@ -1,5 +1,22 @@
 Improvements:
     QOL: Allow for a button of No update, where for a input start and end time, we do not update ref cycle, but need to make sure everything runs smoothly between and after this time, so phase assignment need to continue during update, new phase assignment after NO UPDATE (and during NO UPDATE) need to use the the last ref (computed or updated) to assign phase, need to check also if a computed ref is passed during this period, in which case we need to swap to the computed ref, this is for the extreme case of pauses in real rotation leading to noise completely taking over and make traj un-trackable.
+    Or just allow segmented update and fraction and alpha value and set update to the entire duration or longer
+
+    QOL: Reduce npz file size!
+
+    QOL: Allow for different update and fraction and alpha for each computed refs.
+
+    QOL: Try assigning index base with variance / std bias?
+
+    QOL: Run Segment-Based PCA?
+
+    QOL: Preview More Segments?
+
+    QOL: Change to a smaller smooth for updates.    
+
+    QOL: Also save in json fraction, alpha, update interval
+
+    Fixes: Cache jumping index? Weird stuff from adding computed ref bewteen 2 computed refs.
 
     Fixes: PCAViewer cannot allocate 3.71 GiB for an array with shape (497750000,) and data type float64, so need a fix for large data sets, not urgent, but will need later.
 

@@ -4,17 +4,15 @@ import os
 import glob
 
 # --- Settings ---
-RESULTS_DIR = "results"
-GROUP_REVS = 3  # Number of revolutions to average over
+BASE_DIR = "results backup"
+GROUP_REVS = 1
+PLOT_DURATION = 60  # seconds
+HIST_BINS = 100
+MAX_SPEED_HZ = 1000
+PLOT_XMAX = 400
+
 
 def compute_revolution_frequency(phase, phase_time, group_revs=GROUP_REVS):
-    """
-    Compute frequency based on time between full 2π phase revolutions.
-
-    Returns:
-        freq_times (np.ndarray): Times where speed is computed.
-        freq_values (np.ndarray): Frequency values (Hz).
-    """
     step = 2 * np.pi
     max_phase = phase[-1]
     thresholds = np.arange(step, max_phase, step)
@@ -48,59 +46,136 @@ def compute_revolution_frequency(phase, phase_time, group_revs=GROUP_REVS):
 
     return np.array(freq_times), np.array(freq_values)
 
-def plot_speed_traces(all_speeds, all_times, labels):
-    plt.figure(figsize=(12, 5))
-    for t, s, label in zip(all_times, all_speeds, labels):
-        plt.plot(t, s, label=label, linewidth=1)
-    plt.xlabel("Time (s)")
-    plt.ylabel("Speed (Hz)")
-    plt.title("Instantaneous Frequency (Revolution-Based)")
-    plt.legend()
-    plt.tight_layout()
 
-def plot_speed_histograms(all_speeds, labels):
-    plt.figure(figsize=(10, 5))
-    bins = np.linspace(0, max(max(s) for s in all_speeds), 100)
-    for s, label in zip(all_speeds, labels):
-        plt.hist(s, bins=bins, alpha=0.5, label=label, histtype='stepfilled')
-    plt.xlabel("Speed (Hz)")
-    plt.ylabel("Count")
-    plt.title("Speed Distribution")
-    plt.legend()
-    plt.tight_layout()
+def analyze_all_files(base_dir):
+    npz_files = sorted(glob.glob(os.path.join(base_dir, "**", "phase_data.npz"), recursive=True))
 
-def find_phase_files(base_dir):
-    return sorted(glob.glob(os.path.join(base_dir, "*", "*", "phase_data.npz")))
-
-def main():
-    files = find_phase_files(RESULTS_DIR)
-    if not files:
-        print("⚠ No phase_data.npz files found.")
+    if not npz_files:
+        print("No phase_data.npz files found.")
         return
 
-    all_speeds, all_times, labels = [], [], []
+    speeds_60s = []
+    speeds_full = []
+    times_60s = []
+    labels = []
 
-    for path in files:
+    for path in npz_files:
         try:
             data = np.load(path)
             phase = data["phase"]
             phase_time = data["phase_time"]
 
-            t, s = compute_revolution_frequency(phase, phase_time)
-            all_speeds.append(s)
-            all_times.append(t)
-
-            folder_label = os.path.join(
+            label = os.path.join(
                 os.path.basename(os.path.dirname(os.path.dirname(path))),
                 os.path.basename(os.path.dirname(path))
             )
-            labels.append(folder_label)
-        except Exception as e:
-            print(f"❌ Failed to load {path}: {e}")
 
-    plot_speed_traces(all_speeds, all_times, labels)
-    plot_speed_histograms(all_speeds, labels)
-    plt.show()
+            # --- Full time analysis ---
+            t_full, s_full = compute_revolution_frequency(phase, phase_time)
+            valid_mask_full = s_full <= MAX_SPEED_HZ
+            s_full = s_full[valid_mask_full]
+            t_full = t_full[valid_mask_full]
+            speeds_full.append(s_full)
+
+            # --- First 60s analysis ---
+            duration = phase_time[-1] - phase_time[0]
+            max_time = min(PLOT_DURATION, duration)
+            idx_60 = np.where(phase_time - phase_time[0] <= max_time)[0]
+
+            if len(idx_60) > 1:
+                p60, pt60 = phase[idx_60], phase_time[idx_60]
+                t60, s60 = compute_revolution_frequency(p60, pt60)
+                valid_mask_60 = s60 <= MAX_SPEED_HZ
+                s60 = s60[valid_mask_60]
+                t60 = t60[valid_mask_60]
+                speeds_60s.append(s60)
+                times_60s.append(t60)
+            else:
+                speeds_60s.append(np.array([]))
+                times_60s.append(np.array([]))
+
+            labels.append(label)
+            print(f"[OK] {label}: {len(s60)} speeds in first {max_time:.1f}s, {len(s_full)} total speeds")
+
+        except Exception as e:
+            print(f"[ERROR] {path}: {e}")
+
+    if not speeds_60s or not speeds_full:
+        print("No valid speed data to plot.")
+        return
+
+    bins = np.linspace(0, PLOT_XMAX, HIST_BINS)
+
+    # --- Speed trace from first 60s ---
+    plt.figure(figsize=(12, 5))
+    for t, s, label in zip(times_60s, speeds_60s, labels):
+        if len(t) > 0:
+            plt.plot(t, s, label=label, linewidth=1)
+    plt.xlabel("Time (s)")
+    plt.ylabel("Speed (Hz)")
+    plt.title(f"Instantaneous Speed (first {PLOT_DURATION}s, filtered ≤{MAX_SPEED_HZ} Hz)")
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(BASE_DIR, "speed_trace_60s.png"))
+    plt.close()
+    print("✅ Saved: speed_trace_60s.png")
+
+    # --- Histogram from first 60s ---
+    plt.figure(figsize=(10, 5))
+    for s, label in zip(speeds_60s, labels):
+        if len(s) > 0:
+            plt.hist(s, bins=bins, alpha=0.4, label=label, histtype="stepfilled")
+    plt.xlabel("Speed (Hz)")
+    plt.ylabel("Count")
+    plt.title(f"Speed Histogram (first {PLOT_DURATION}s)")
+    plt.xlim(0, PLOT_XMAX)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(BASE_DIR, "histogram_60s.png"))
+    plt.close()
+    print("✅ Saved: histogram_60s.png")
+
+    # --- Histogram from full data ---
+    plt.figure(figsize=(10, 5))
+    for s, label in zip(speeds_full, labels):
+        if len(s) > 0:
+            plt.hist(s, bins=bins, alpha=0.4, label=label, histtype="stepfilled")
+    plt.xlabel("Speed (Hz)")
+    plt.ylabel("Count")
+    plt.title("Speed Histogram (Full Duration)")
+    plt.xlim(0, PLOT_XMAX)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(BASE_DIR, "histogram_full.png"))
+    plt.close()
+    print("✅ Saved: histogram_full.png")
+
+    # --- Combined histogram (full) ---
+    all_combined = np.concatenate(speeds_full)
+    plt.figure(figsize=(8, 5))
+    plt.hist(all_combined, bins=bins, alpha=0.7, color="black")
+    plt.xlabel("Speed (Hz)")
+    plt.ylabel("Count")
+    plt.title("Combined Speed Histogram (Full Duration)")
+    plt.xlim(0, PLOT_XMAX)
+    plt.tight_layout()
+    plt.savefig(os.path.join(BASE_DIR, "histogram_combined.png"))
+    plt.close()
+    print("✅ Saved: histogram_combined.png")
+
+    # --- Combined histogram (first 60s only) ---
+    all_combined_60s = np.concatenate([s for s in speeds_60s if len(s) > 0])
+    plt.figure(figsize=(8, 5))
+    plt.hist(all_combined_60s, bins=bins, alpha=0.7, color="gray")
+    plt.xlabel("Speed (Hz)")
+    plt.ylabel("Count")
+    plt.title("Combined Speed Histogram (First 60s)")
+    plt.xlim(0, PLOT_XMAX)
+    plt.tight_layout()
+    plt.savefig(os.path.join(BASE_DIR, "histogram_combined_60s.png"))
+    plt.close()
+    print("✅ Saved: histogram_combined_60s.png")
+
 
 if __name__ == "__main__":
-    main()
+    analyze_all_files(BASE_DIR)
