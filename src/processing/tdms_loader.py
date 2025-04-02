@@ -1,7 +1,3 @@
-"""
-tdms_loader.py – Load TDMS files and extract timestamped channel data.
-"""
-
 import numpy as np
 from nptdms import TdmsFile
 
@@ -15,7 +11,7 @@ def load_tdms_data(tdms_file_path):
 
     Returns:
         tuple:
-            - timestamps (np.ndarray): Time vector.
+            - timestamps (np.ndarray): Time vector (float32).
             - data (np.ndarray): Matrix of channel data (columns: C0, C90, C45, C135).
             - channel_names (list): Names of the channels extracted.
     """
@@ -25,8 +21,8 @@ def load_tdms_data(tdms_file_path):
         group = tdms_file.groups()[0]
         channels = group.channels()
 
-        # Extract timestamps from the first channel
-        timestamps = np.array(channels[0].time_track())
+        # Extract timestamps from the first channel and convert to float32
+        timestamps = np.array(channels[0].time_track(), dtype=np.float32)
 
         # Manually define the four channels
         C90 = channels[0].data
@@ -47,4 +43,3 @@ def load_tdms_data(tdms_file_path):
     except Exception as e:
         print(f"[Error] Failed to read TDMS file '{tdms_file_path}': {e}")
         return None, None, None
-        # Optionally: raise  # Uncomment to let exception propagate

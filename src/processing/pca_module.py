@@ -142,7 +142,7 @@ def assign_phase_indices(trajectory, reference_cycle, prev_phase=None):
     """
     num_points = trajectory.shape[0]
     len_array = reference_cycle.shape[0]
-    index = np.empty(num_points, dtype=np.int32)
+    index = np.empty(num_points, dtype=np.uint8)
 
     # Assign phase for first point
     if prev_phase is not None:
@@ -172,10 +172,10 @@ def ref_cycle_update(X_pca, computed_ref, update_interval, fraction=0.025, alpha
     update_sample_size = int(update_interval * SAMPLING_RATE)
     total_samples_pca = X_pca.shape[0]
     if total_samples_pca == 0:
-        return [], np.array([], dtype=np.int32)
+        return [], np.array([], dtype=np.uint8)
 
     updated_refs = []
-    phase0 = np.array([], dtype=np.int32)
+    phase0 = np.array([], dtype=np.uint8)
     prev_phase = None
 
     ref_start_idx, smooth_ref_cycle = computed_ref
