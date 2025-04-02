@@ -3,3 +3,4 @@ __pycache__/
 results/
 .venv/
 src/last_file.txt
+results backup/
