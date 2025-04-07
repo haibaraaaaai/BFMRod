@@ -10,7 +10,7 @@ WINDOW_WIDTH_RAD = 0.2 * np.pi
 WINDOW_STRIDE_RAD = 0.05 * np.pi
 SMOOTH_WINDOW = 51
 SMOOTH_POLYORDER = 3
-LIMIT_SAMPLES = 25_000_000  # Analyze only first 250k samples (~1s)
+LIMIT_SAMPLES = 2_500_000  # Analyze only first 250k samples (~1s)
 
 # --- File path (adjust if needed) ---
 npz_path = "results backup/2025.03.20 patricia/file8/phase_data.npz"
@@ -27,7 +27,7 @@ def get_best_window_phase_speed(phase, phase_time):
     phase_unwrapped = savgol_filter(phase_unwrapped, window_length=SMOOTH_WINDOW, polyorder=SMOOTH_POLYORDER)
 
     rev_starts = detect_revolutions(phase_unwrapped)
-    candidate_windows = np.arange(0, 2 * np.pi - WINDOW_WIDTH_RAD, WINDOW_STRIDE_RAD)
+    candidate_windows = np.arange(0, 2 * np.pi, WINDOW_STRIDE_RAD)
 
     all_speeds_by_angle = []
     all_rmse_by_angle = []
