@@ -1,15 +1,16 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+print("Current working dir:", os.getcwd())
 import glob
+import traceback
 
 # --- Settings ---
 BASE_DIR = "results backup"
 GROUP_REVS = 1
 PLOT_DURATION = 60  # seconds
 HIST_BINS = 100
-MAX_SPEED_HZ = 1000
-PLOT_XMAX = 400
+REFERENCE_NUM_POINTS = 200
 
 
 def compute_revolution_frequency(phase, phase_time, group_revs=GROUP_REVS):
@@ -24,7 +25,7 @@ def compute_revolution_frequency(phase, phase_time, group_revs=GROUP_REVS):
             break
         rev_times.append(phase_time[idx])
 
-    rev_times = np.array([phase_time[0]] + rev_times)
+    rev_times = np.array(rev_times)  # No phase_time[0] padding
 
     freq_times = []
     freq_values = []
@@ -48,7 +49,7 @@ def compute_revolution_frequency(phase, phase_time, group_revs=GROUP_REVS):
 
 
 def analyze_all_files(base_dir):
-    npz_files = sorted(glob.glob(os.path.join(base_dir, "**", "phase_data.npz"), recursive=True))
+    npz_files = sorted(glob.glob(os.path.join(base_dir, "**", "phase_data*.npz"), recursive=True))
 
     if not npz_files:
         print("No phase_data.npz files found.")
@@ -59,11 +60,19 @@ def analyze_all_files(base_dir):
     times_60s = []
     labels = []
 
+    print(f"[DEBUG] Found {len(npz_files)} NPZ files")
     for path in npz_files:
+        print(f"[DEBUG] Loading: {path}")
         try:
             data = np.load(path)
-            phase = data["phase"]
+            phase0 = data["phase0"]
             phase_time = data["phase_time"]
+
+            # Convert to float phase and unwrap
+            phase = phase0 / 200 * 2 * np.pi
+            phase = np.unwrap(phase)
+            if "harmonic2x" in path.lower():
+                phase *= 0.5
 
             label = os.path.join(
                 os.path.basename(os.path.dirname(os.path.dirname(path))),
@@ -72,9 +81,6 @@ def analyze_all_files(base_dir):
 
             # --- Full time analysis ---
             t_full, s_full = compute_revolution_frequency(phase, phase_time)
-            valid_mask_full = s_full <= MAX_SPEED_HZ
-            s_full = s_full[valid_mask_full]
-            t_full = t_full[valid_mask_full]
             speeds_full.append(s_full)
 
             # --- First 60s analysis ---
@@ -85,9 +91,6 @@ def analyze_all_files(base_dir):
             if len(idx_60) > 1:
                 p60, pt60 = phase[idx_60], phase_time[idx_60]
                 t60, s60 = compute_revolution_frequency(p60, pt60)
-                valid_mask_60 = s60 <= MAX_SPEED_HZ
-                s60 = s60[valid_mask_60]
-                t60 = t60[valid_mask_60]
                 speeds_60s.append(s60)
                 times_60s.append(t60)
             else:
@@ -99,12 +102,15 @@ def analyze_all_files(base_dir):
 
         except Exception as e:
             print(f"[ERROR] {path}: {e}")
+            traceback.print_exc()
 
     if not speeds_60s or not speeds_full:
         print("No valid speed data to plot.")
         return
 
-    bins = np.linspace(0, PLOT_XMAX, HIST_BINS)
+    all_combined = np.concatenate(speeds_full)
+    max_speed = np.max(all_combined)
+    bins = np.linspace(0, max_speed, HIST_BINS)
 
     # --- Speed trace from first 60s ---
     plt.figure(figsize=(12, 5))
@@ -113,7 +119,7 @@ def analyze_all_files(base_dir):
             plt.plot(t, s, label=label, linewidth=1)
     plt.xlabel("Time (s)")
     plt.ylabel("Speed (Hz)")
-    plt.title(f"Instantaneous Speed (first {PLOT_DURATION}s, filtered ≤{MAX_SPEED_HZ} Hz)")
+    plt.title(f"Instantaneous Speed (first {PLOT_DURATION}s)")
     plt.legend()
     plt.tight_layout()
     plt.savefig(os.path.join(BASE_DIR, "speed_trace_60s.png"))
@@ -128,7 +134,6 @@ def analyze_all_files(base_dir):
     plt.xlabel("Speed (Hz)")
     plt.ylabel("Count")
     plt.title(f"Speed Histogram (first {PLOT_DURATION}s)")
-    plt.xlim(0, PLOT_XMAX)
     plt.legend()
     plt.tight_layout()
     plt.savefig(os.path.join(BASE_DIR, "histogram_60s.png"))
@@ -143,7 +148,6 @@ def analyze_all_files(base_dir):
     plt.xlabel("Speed (Hz)")
     plt.ylabel("Count")
     plt.title("Speed Histogram (Full Duration)")
-    plt.xlim(0, PLOT_XMAX)
     plt.legend()
     plt.tight_layout()
     plt.savefig(os.path.join(BASE_DIR, "histogram_full.png"))
@@ -151,13 +155,11 @@ def analyze_all_files(base_dir):
     print("✅ Saved: histogram_full.png")
 
     # --- Combined histogram (full) ---
-    all_combined = np.concatenate(speeds_full)
     plt.figure(figsize=(8, 5))
     plt.hist(all_combined, bins=bins, alpha=0.7, color="black")
     plt.xlabel("Speed (Hz)")
     plt.ylabel("Count")
     plt.title("Combined Speed Histogram (Full Duration)")
-    plt.xlim(0, PLOT_XMAX)
     plt.tight_layout()
     plt.savefig(os.path.join(BASE_DIR, "histogram_combined.png"))
     plt.close()
@@ -170,7 +172,6 @@ def analyze_all_files(base_dir):
     plt.xlabel("Speed (Hz)")
     plt.ylabel("Count")
     plt.title("Combined Speed Histogram (First 60s)")
-    plt.xlim(0, PLOT_XMAX)
     plt.tight_layout()
     plt.savefig(os.path.join(BASE_DIR, "histogram_combined_60s.png"))
     plt.close()
@@ -178,4 +179,5 @@ def analyze_all_files(base_dir):
 
 
 if __name__ == "__main__":
+    print("[DEBUG] Starting analysis...")
     analyze_all_files(BASE_DIR)

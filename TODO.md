@@ -1,6 +1,6 @@
 Improvements:
-    QOL: Test how the key changes works on windows system.
-
+    Ideas: Quick X+iY Check in gui. Alert for cases where the speed is 2x but also the variance.
+    
     QOL: Allow for a button of No update, where for a input start and end time, we do not update ref cycle, but need to make sure everything runs smoothly between and after this time, so phase assignment need to continue during update, new phase assignment after NO UPDATE (and during NO UPDATE) need to use the the last ref (computed or updated) to assign phase, need to check also if a computed ref is passed during this period, in which case we need to swap to the computed ref, this is for the extreme case of pauses in real rotation leading to noise completely taking over and make traj un-trackable.
     Or just allow segmented update and fraction and alpha value and set update to the entire duration or longer
 
