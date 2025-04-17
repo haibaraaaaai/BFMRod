@@ -35,3 +35,6 @@ Improvements:
     Ideas: Try additional smoothing on computed ref cycles.
 
     Ideas: Explicit linear correction to enforce closure, by progressively "morphing" the trajectory to bring the last point back to the first.
+
+
+Fix speed per angle and speed per angle smoothing

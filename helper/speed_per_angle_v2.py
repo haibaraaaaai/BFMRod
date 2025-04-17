@@ -9,10 +9,10 @@ WINDOW_WIDTH_RAD = 0.2 * np.pi
 WINDOW_STRIDE_RAD = 0.05 * np.pi
 SMOOTH_WINDOW = 51
 SMOOTH_POLYORDER = 3
-LIMIT_SAMPLES = 250_000
+LIMIT_SAMPLES = 2_500_000
 MIN_POINTS = 10  # Minimum points per angle-window to attempt speed estimation
 
-npz_path = "results backup/2025.03.20 patricia/file8/phase_data.npz"
+npz_path = "results backup/2025.03.20 patricia/file12/phase_data.npz"
 
 
 def compute_speed_matrix(phase, phase_time, angle_starts, angle_width_rad=0.4, min_points=10):
@@ -23,15 +23,20 @@ def compute_speed_matrix(phase, phase_time, angle_starts, angle_width_rad=0.4, m
     rev_count = int(phase[-1] // (2 * np.pi))
     speed_matrix = np.full((n_angles, rev_count), np.nan)
 
+    rev_offsets = np.arange(rev_count) * 2 * np.pi
+    angle_bounds = [(start, start + angle_width_rad) for start in angle_starts]
+
     for rev in range(rev_count):
-        for a_idx, angle_start in enumerate(angle_starts):
-            low = rev * 2 * np.pi + angle_start
-            high = low + angle_width_rad
+        rev_offset = rev_offsets[rev]
+        for a_idx, (angle_start, angle_end) in enumerate(angle_bounds):
+            low = rev_offset + angle_start
+            high = rev_offset + angle_end
             mask = (phase >= low) & (phase < high)
             if np.count_nonzero(mask) >= min_points:
                 x = phase_time[mask]
                 y = phase[mask]
-                slope, _ = np.polyfit(x, y, 1)
+                A = np.vstack([x, np.ones_like(x)]).T
+                slope, _ = np.linalg.lstsq(A, y, rcond=None)[0]
                 speed = slope / (2 * np.pi)
                 speed_matrix[a_idx, rev] = speed
 
@@ -75,6 +80,19 @@ def analyze_single_file(npz_path):
     plt.close()
 
     print("✅ Speed matrix plotted and saved.")
+
+    # --- Angular speed profile ---
+    mean_speed_per_angle = np.nanmean(speed_matrix, axis=1)
+    std_speed_per_angle = np.nanstd(speed_matrix, axis=1)
+
+    plt.figure()
+    plt.errorbar(angle_bins / np.pi, mean_speed_per_angle, yerr=std_speed_per_angle, fmt='-o', capsize=3)
+    plt.xlabel("Angle (π rad)")
+    plt.ylabel("Mean Speed (Hz)")
+    plt.title("Mean Speed vs Angle")
+    plt.tight_layout()
+    plt.savefig(base + "_mean_speed_by_angle.png")
+    plt.close()
 
 
 if __name__ == "__main__":
