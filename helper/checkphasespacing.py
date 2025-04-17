@@ -56,7 +56,7 @@ pca_data = compute_pca(raw_data)[:, :3]
 
 # === Reference cycle extraction and smoothing ===
 initial_cycle = pca_data[REF_START:REF_END]
-smooth_ref_cycle = smooth_trajectory_arc_uniform(initial_cycle)
+smooth_ref_cycle = smooth_trajectory(initial_cycle)
 
 # === Find closest PCA indices for smoothed ref points ===
 tree = cKDTree(pca_data)
