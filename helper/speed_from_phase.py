@@ -94,5 +94,5 @@ def analyze_single_file(npz_path):
 
 if __name__ == "__main__":
     # Change this path to your phase_data.npz
-    path = "results/data/file/phase_data.npz"
+    path = "results backup/2025.03.20 patricia/file8/phase_data.npz"
     analyze_single_file(path)
