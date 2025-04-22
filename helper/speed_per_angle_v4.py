@@ -13,7 +13,7 @@ LIMIT_SAMPLES = 2_500_000
 MIN_POINTS = 10
 SEGMENT_SIZE = 250_000  # 1-second chunks at 250 kHz
 
-npz_path = "results backup/2025.03.20 patricia/file8/phase_data.npz"
+npz_path = "results/data/file/phase_data.npz"
 
 
 def compute_speed_matrix(phase, phase_time, angle_starts, angle_width_rad=0.4, min_points=10):

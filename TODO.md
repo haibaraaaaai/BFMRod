@@ -38,3 +38,14 @@ Improvements:
 
 
 Fix speed per angle and speed per angle smoothing
+
+try interpolate phase? or projecting the pca on ref cycle instead of finding nearest point for smoother data.
+
+Test linear fit with plots to see if fit make sense.
+
+Test low / no induction (hope for plasmid leak) to see if the peaks reduce to only 1 in histograms.
+
+
+need a no update button.
+
+mask overfit?
