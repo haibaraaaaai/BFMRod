@@ -18,11 +18,12 @@ class RefUpdateCacheManager:
         ref_bounds: Tuple[Tuple[int, int], Tuple[int, int]],
         update_interval: float,
         alpha: float,
-        fraction: float
-    ) -> Tuple[Tuple[Tuple[int, int], Tuple[int, int]], float, float, float]:
+        fraction: float,
+        no_update: bool = False
+    ) -> Tuple[Tuple[Tuple[int, int], Tuple[int, int]], float, float, float, bool]:
         ref1 = tuple(map(int, ref_bounds[0]))
         ref2 = tuple(map(int, ref_bounds[1]))
-        return (ref1, ref2), float(update_interval), float(alpha), float(fraction)
+        return (ref1, ref2), float(update_interval), float(alpha), float(fraction), bool(no_update)
 
     def add_entry(
         self,
@@ -31,8 +32,9 @@ class RefUpdateCacheManager:
         alpha: float,
         fraction: float,
         entry: SegmentCacheEntry,
+        no_update: bool = False
     ):
-        key = self._make_key(ref_bounds, update_interval, alpha, fraction)
+        key = self._make_key(ref_bounds, update_interval, alpha, fraction, no_update)
         self.cache[key] = entry
 
     def get_entry(
@@ -41,8 +43,9 @@ class RefUpdateCacheManager:
         update_interval: float,
         alpha: float,
         fraction: float,
+        no_update: bool = False
     ) -> Optional[SegmentCacheEntry]:
-        key = self._make_key(ref_bounds, update_interval, alpha, fraction)
+        key = self._make_key(ref_bounds, update_interval, alpha, fraction, no_update)
         return self.cache.get(key)
 
     def find_matching_pairs(
@@ -51,6 +54,7 @@ class RefUpdateCacheManager:
         update_interval: float,
         alpha: float,
         fraction: float,
+        no_update: bool = False
     ) -> List[SegmentCacheEntry]:
         """
         Search for all consecutive computed_ref_bound pairs that have cached entries.
@@ -59,7 +63,7 @@ class RefUpdateCacheManager:
         entries = []
         for i in range(len(computed_bounds) - 1):
             pair = (computed_bounds[i], computed_bounds[i + 1])
-            key = self._make_key(pair, update_interval, alpha, fraction)
+            key = self._make_key(pair, update_interval, alpha, fraction, no_update)
             if key in self.cache:
                 entries.append(self.cache[key])
         return entries
