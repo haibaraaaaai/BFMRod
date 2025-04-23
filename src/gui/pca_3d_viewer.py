@@ -89,6 +89,7 @@ class PCA3DViewer(QMainWindow):
         self.max_time_label.setStyleSheet("font-size: 10px; color: gray;")
         self.alpha_input = QLineEdit(str(self.alpha))
         self.fraction_input = QLineEdit(str(self.fraction))
+        self.no_update_checkbox = QtWidgets.QCheckBox("No Update")
 
         self.ref_selector = QComboBox()
         self.ref_selector.currentIndexChanged.connect(self.jump_to_ref_cycle)
@@ -144,6 +145,8 @@ class PCA3DViewer(QMainWindow):
             QLabel("Alpha:"), self.alpha_input
         ]:
             fraction_alpha_layout.addWidget(widget)
+
+        fraction_alpha_layout.addWidget(self.no_update_checkbox)
 
         self.compare_button = QPushButton("Compare PCA0 vs Ref[Phase]")
         self.compare_button.clicked.connect(self.compare_pca_to_ref_phase)
@@ -350,6 +353,7 @@ class PCA3DViewer(QMainWindow):
             self.update_interval = float(self.update_interval_input.text())
             self.alpha = float(self.alpha_input.text())
             self.fraction = float(self.fraction_input.text())
+            no_update = self.no_update_checkbox.isChecked()
 
             self.segment_size = int(self.segment_duration * SAMPLING_RATE)
 
@@ -383,7 +387,7 @@ class PCA3DViewer(QMainWindow):
 
             for i in range(len(ref_index_list) - 1):
                 pair = (ref_index_list[i], ref_index_list[i + 1])
-                cached = self.ref_update_cache.get_entry(pair, self.update_interval, self.alpha, self.fraction)
+                cached = self.ref_update_cache.get_entry(pair, self.update_interval, self.alpha, self.fraction, no_update=no_update)
 
                 if cached:
                     self.updated_refs += cached.updated_refs
@@ -396,6 +400,7 @@ class PCA3DViewer(QMainWindow):
                         update_interval=self.update_interval,
                         fraction=self.fraction,
                         alpha=self.alpha,
+                        no_update=no_update,
                     )
                     self.updated_refs += updated_refs
                     self.phase0 = np.concatenate((self.phase0, phase0))
@@ -404,7 +409,7 @@ class PCA3DViewer(QMainWindow):
                         phase0=phase0,
                     )
                     self.ref_update_cache.add_entry(
-                        pair, self.update_interval, self.alpha, self.fraction, entry
+                        pair, self.update_interval, self.alpha, self.fraction, entry, no_update=no_update
                     )
 
             windowed_pca_cache = self.pca[self.valid_refs[-1][0]:pca_end_idx]
@@ -413,6 +418,7 @@ class PCA3DViewer(QMainWindow):
                 update_interval=self.update_interval,
                 fraction=self.fraction,
                 alpha=self.alpha,
+                no_update=no_update,
             )
             self.updated_refs += updated_refs
             self.phase0 = np.concatenate((self.phase0, phase0))
