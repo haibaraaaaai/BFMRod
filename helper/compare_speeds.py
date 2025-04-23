@@ -6,7 +6,7 @@ import glob
 import traceback
 
 # --- Settings ---
-BASE_DIR = "results backup"
+BASE_DIR = "results backup/2025.04.15 patricia"
 GROUP_REVS = 1
 PLOT_DURATION = 60  # seconds
 HIST_BINS = 100

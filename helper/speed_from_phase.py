@@ -10,12 +10,6 @@ SYMMETRY_REVS = 26 / 5  # For 26/5 revolution symmetry
 REFERENCE_NUM_POINTS = 200  # Used to convert phase0 to float phase
 
 def compute_revolution_frequency(phase, phase_time, rev_step=2*np.pi):
-    """
-    Compute frequency based on time between full 2π phase revolutions.
-    Returns:
-        freq_times (np.ndarray): Times where speed is computed.
-        freq_values (np.ndarray): Frequency values (Hz).
-    """
     step = rev_step
     max_phase = phase[-1]
     thresholds = np.arange(step, max_phase, step)
@@ -45,7 +39,6 @@ def compute_revolution_frequency(phase, phase_time, rev_step=2*np.pi):
 
     return np.array(freq_times), np.array(freq_values)
 
-
 def analyze_single_file(npz_path):
     try:
         data = np.load(npz_path)
@@ -56,22 +49,18 @@ def analyze_single_file(npz_path):
         phase = phase0 / REFERENCE_NUM_POINTS * 2 * np.pi
         phase = np.unwrap(phase)
 
-        # Compute revolution-based frequency
         # Speed per 1 rev
         t1, s1 = compute_revolution_frequency(phase, phase_time)
 
         # Speed per 26/5 rev
         symmetry_step = SYMMETRY_REVS * 2 * np.pi
         t2, s2 = compute_revolution_frequency(phase, phase_time, rev_step=symmetry_step)
-        s2 *= SYMMETRY_REVS  # Adjust for frequency units (Hz)
-        # (Handled above as t1, s1 and t2, s2)
+        s2 *= SYMMETRY_REVS
 
-        # Moving average (window=5) of Per 26/5 rev speed
+        # Smoothed version of s2 with moving average (window=5)
         window = 5
         s3 = np.convolve(s2, np.ones(window)/window, mode='valid')
         t3 = t2[window // 2 : -((window - 1) // 2)]
-
-        duration = phase_time[-1] - phase_time[0]
 
         trace_configs = [
             (t1, s1, "Per Rev", "rev1", 0.2),
@@ -79,9 +68,10 @@ def analyze_single_file(npz_path):
             (t3, s3, "Smoothed 26/5 (5 pt MA)", "rev26", 0.22)
         ]
 
-        # Fit GMM to each speed distribution and store peaks
+        # GMM fitting (with masking > 2000 Hz)
         gmm_results = {}
         for s, tag in [(s1, "rev1"), (s2, "rev26_5"), (s3, "rev26")]:
+            s = s[s < 2000]
             s_reshaped = s.reshape(-1, 1)
             best_gmm = None
             best_bic = np.inf
@@ -94,13 +84,16 @@ def analyze_single_file(npz_path):
             peaks = np.sort(best_gmm.means_.flatten())
             gmm_results[tag] = peaks
 
+        # Plot time traces with GMM peaks and chi2 smoothing
         for t, s, label, tag, sigma_factor in trace_configs:
+            mask = s < 2000
+            t = t[mask]
+            s = s[mask]
             plt.figure(figsize=(12, 4))
             plt.plot(t, s, label=f"Original ({label})", alpha=0.3)
             sigma = sigma_factor * np.std(s)
             s_smooth = chi2_filter_njit_flat_steps(s, sigma)
             plt.plot(t, s_smooth, label=f"Chi2 σ={sigma_factor:.2f}×std", linewidth=1.5)
-            # Plot GMM peaks
             for peak in gmm_results.get(tag, []):
                 plt.axhline(peak, linestyle="--", color="gray", alpha=0.5)
             plt.xlabel("Time (s)")
@@ -115,11 +108,11 @@ def analyze_single_file(npz_path):
             print(f"✅ Saved {label} speed trace to: {out_path}")
             plt.close()
 
-        # Plot normalized histogram (now normalize by max for plotting)
+        # Plot normalized histogram
         plt.figure(figsize=(8, 5))
-        counts1, bins1 = np.histogram(s1, bins=100)
-        counts2, bins2 = np.histogram(s2, bins=100)
-        counts3, bins3 = np.histogram(s3, bins=100)
+        counts1, bins1 = np.histogram(s1[s1 < 2000], bins=100)
+        counts2, bins2 = np.histogram(s2[s2 < 2000], bins=100)
+        counts3, bins3 = np.histogram(s3[s3 < 2000], bins=100)
         bin_width1 = bins1[1] - bins1[0]
         bin_width2 = bins2[1] - bins2[0]
         bin_width3 = bins3[1] - bins3[0]
@@ -146,13 +139,12 @@ def analyze_single_file(npz_path):
 @numba.njit(parallel=True, fastmath=True)
 def chi2_filter_njit_flat_steps(Y, sigma):
     N = len(Y)
-    window_sizes = np.linspace(10, 1000, 10)
-    window_sizes = window_sizes.astype(np.int32)
+    window_sizes = np.linspace(10, 1000, 10).astype(np.int32)
     smoothed_Y = np.zeros(N, dtype=np.float64)
     weighted_sum = np.zeros(N, dtype=np.float64)
     for w_idx in numba.prange(len(window_sizes)):
         w = window_sizes[w_idx]
-        for i in range(N - w + 1):  # Sliding window over dataset
+        for i in range(N - w + 1):
             Y_window = Y[i : i + w]
             Y_mean = np.sum(Y_window) / w
             chi2_values = np.sum((Y_window - Y_mean) ** 2) / (w * sigma**2)
@@ -161,8 +153,7 @@ def chi2_filter_njit_flat_steps(Y, sigma):
             weighted_sum[i : i + w] += weight
     return smoothed_Y / weighted_sum
 
-
 if __name__ == "__main__":
-    # Change this path to your phase_data.npz
-    path = "results/20250415/file6/phase_data.npz"
+    # Update this path to your actual file
+    path = "results backup/2025.04.16 patricia/file8/phase_data.npz"
     analyze_single_file(path)
