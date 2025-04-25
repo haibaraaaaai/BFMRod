@@ -1,92 +1,72 @@
-# BFM Analysis GUI
+# BFMRod
 
-A graphical tool for visualizing TDMS signal data, performing PCA-based phase analysis, and viewing instantaneous frequency in 2D/3D.
+A modular Python toolkit for analyzing bacterial flagellar motor (BFM) rotation from TDMS signal data. Includes a PyQt6-based GUI for PCA-based phase tracking and frequency estimation, along with supporting scripts for analysis and data management.
 
-The last working version is the one with commit message "Checking speed by angles"
+---
+
+## Project Structure
+
+```
+BFMRod/
+├── src/                # Main GUI and backend logic
+├── tools/              # Custom analysis tools outside the GUI
+├── archive/            # Outdated or prototype PCA scripts
+├── results/            # GUI-generated output (overwritten on each run)
+├── results_backup/     # Manually saved outputs for further analysis
+├── data/               # Raw TDMS input files
+├── docs/               # Reference code and slides
+├── results_notes.md   # Manual log of datasets and findings
+├── README.md           # You’re here!
+├── TODO.md             # Task tracking
+├── requirements.txt    # Python dependencies
+```
 
 ---
 
 ## Features
-- Load and visualize TDMS files
-- Apply PCA to signal data with phase tracking
-- View 3D PCA trajectories with reference cycles
-- Plot unwrapped phase and compute instantaneous frequency
+
+- Load and explore TDMS files with a GUI
+- Apply PCA to extract dominant signal features
+- Automatically detect reference cycles
+- Track unwrapped phase and compute speed over time
+- Visualize 3D PCA trajectories, phase, and frequency
+- Save results for batch analysis or manual inspection
 
 ---
 
-## Installation
-1. Fork this repository to your own GitHub account and clone your fork locally:
-```bash
-git clone https://github.com/your-username/your-forked-repo.git
-cd your-forked-repo
-```
+## Getting Started
 
-2. Install required Python packages:
-```bash
-pip install -r requirements.txt
-```
+1. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-**Dependencies include:** `numpy`, `scipy`, `scikit-learn`, `nptdms`, `pyqtgraph`, `PyQt6`, `PyOpenGL`, `numba`
-
----
-
-## Usage
-From the root folder, run:
-```bash
-cd src
-python -m main
-```
+2. **Run the GUI**:
+   ```bash
+   cd src
+   python -m main
+   ```
 
 ---
 
-## Checking Out Last Working Version
-To test or work on the last working version with a certain commit message "XXXXX":
+## Alternative Analysis (Without GUI)
 
-1. **Find the commit hash** for that update:
-```bash
-git log --oneline
-```
-Look for a line like with the commit message:
-```
-abc1234 XXXXX
-```
+Standalone scripts are available in `archive/` for running PCA and speed analysis outside the GUI:
 
-2. **Check out that commit into a new branch:**
-```bash
-git checkout -b xxxx abc1234
-```
+- `pca.py`: Loads TDMS, applies PCA, detects reference cycle, tracks phase
+- `compute_speed.py`: Loads phase output, computes instantaneous frequency
 
-> This keeps your current branch intact and creates a new one based on the selected commit.
-
-3. To go back to your main branch later:
-```bash
-git checkout main
-```
-
-This is useful for pinpointing working states while still keeping a backup version for you to work on and make changes.
+These scripts are ideal for testing or running batch jobs.
 
 ---
 
-## GUI Workflow
-1. Click **"Open TDMS"** to load a `.tdms` file.
-2. Use checkboxes to select channels for plotting.
-3. Adjust time window using sliders or manual input.
-4. Define PCA time range and segment size, then click **"Run PCA"**.
-5. View:
-   - 3D PCA trajectory with overlaid reference cycles.
-   - Unwrapped phase over time.
-   - Instantaneous frequency derived from phase.
+## Scripts Overview
 
-## Quick PCA Testing (No GUI)
-1. If you wnat to quickly check the core PCA algorithm, check scripts/ folder which contains minimal working code:
-   - pca.py:
-      - Loads a .tdms file from the data/ folder.
-      - Applies PCA and detects a reference cycle.
-      - Assigns phase indices and tracks updates over time.
-      - Saves the computed phase and summary plots to results/.
-   - compute_speed.py:
-      - Loads the saved phase file from pca.py.
-      - Computes instantaneous frequency from phase data.
-      - Plots and saves the frequency trace.
-2. Make sure you update the file paths in each script to match your own .tdms data.
-3. Some algorithms are changed in src/ code, but the core idea of finding ref cycle and measuring speed from ref cycle is the same.
+The `tools/` folder contains standalone scripts for inspecting and analyzing BFM data from the GUI:
+
+- `compute_speed.py`: Compute and plot instantaneous frequency from saved phase.
+- `harmonics_check.py`: Plot X+iY trajectory to inspect signal anisotropy and harmonic structure.
+- `summarize_folder_speed.py`: Compare speed distributions across multiple datasets and plot histograms.
+- `speed_per_angle.py`: Analyze speed variation as a function of angular position across revolutions.
+- `speed_angle_hist.py`: Plot histograms of speed within specific angular regions across revolutions.
+- `speed_angle_gmm.py`: Extract per-revolution speed from a fixed-angle region and fit a Gaussian mixture model.
