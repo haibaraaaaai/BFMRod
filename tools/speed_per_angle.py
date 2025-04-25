@@ -1,25 +1,28 @@
+"""
+Analyze instantaneous rotation speed as a function of angular position across revolutions.
+Generates full and per-segment speed-angle matrices, profiles, and stability plots.
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
 import os
 
-# --- Settings ---
+# Settings
 REFERENCE_NUM_POINTS = 200
 WINDOW_WIDTH_RAD = 0.2 * np.pi
 WINDOW_STRIDE_RAD = 0.05 * np.pi
 SMOOTH_WINDOW = 51
 SMOOTH_POLYORDER = 3
-LIMIT_SAMPLES = 2_500_000
+LIMIT_SAMPLES = 500_000
 MIN_POINTS = 10
 SEGMENT_SIZE = 250_000  # 1-second chunks at 250 kHz
 
-npz_path = "results/data/file/phase_data.npz"
+npz_path = "results_backup/2025.04.15 patricia/file/phase_data.npz"
 
 
 def compute_speed_matrix(phase, phase_time, angle_starts, angle_width_rad=0.4, min_points=10):
-    """
-    Compute a 2D matrix of speeds: [angle_bin_index, revolution_index]
-    """
+    """Compute [angle_bin, revolution] speed matrix from phase and time."""
     n_angles = len(angle_starts)
     rev_count = int(phase[-1] // (2 * np.pi))
     speed_matrix = np.full((n_angles, rev_count), np.nan)
@@ -45,7 +48,7 @@ def compute_speed_matrix(phase, phase_time, angle_starts, angle_width_rad=0.4, m
 
 
 def analyze_single_file(npz_path):
-    # --- Load and unwrap phase ---
+    # Load data and unwrap phase
     data = np.load(npz_path)
     phase0 = data["phase0"][:LIMIT_SAMPLES]
     phase_time = data["phase_time"][:LIMIT_SAMPLES]
@@ -55,10 +58,10 @@ def analyze_single_file(npz_path):
     phase = np.unwrap(phase)
     phase = savgol_filter(phase, SMOOTH_WINDOW, SMOOTH_POLYORDER)
 
-    # --- Define angle bins ---
+    # Define angle bins
     angle_bins = np.arange(0, 2 * np.pi, WINDOW_STRIDE_RAD)
 
-    # --- Compute full speed matrix ---
+    # Compute full speed matrix
     speed_matrix = compute_speed_matrix(
         phase,
         phase_time,
@@ -67,7 +70,7 @@ def analyze_single_file(npz_path):
         min_points=MIN_POINTS,
     )
 
-    # --- Plot full speed matrix ---
+    # Plot full speed matrix
     plt.figure(figsize=(12, 6))
     plt.imshow(speed_matrix, aspect='auto', origin='lower', cmap='viridis',
                extent=[0, speed_matrix.shape[1], 0, 2])
@@ -75,14 +78,14 @@ def analyze_single_file(npz_path):
     plt.xlabel("Revolution Index")
     plt.ylabel("Angle (π rad)")
     plt.yticks(np.linspace(0, 2, 9), [f"{x:.1f}" for x in np.linspace(0, 2, 9)])
-    plt.title("Speed by Angle and Revolution")
+    plt.title("Speed vs Angle and Revolution")
     plt.tight_layout()
     plt.savefig(base + "_speed_matrix_angle_vs_rev.png")
     plt.close()
 
-    print("✅ Full speed matrix plotted and saved.")
+    print("Full speed matrix plotted and saved.")
 
-    # --- Angular speed profile (mean ± std) ---
+    # Angular profile (mean ± std)
     mean_speed_per_angle = np.nanmean(speed_matrix, axis=1)
     std_speed_per_angle = np.nanstd(speed_matrix, axis=1)
 
@@ -90,12 +93,12 @@ def analyze_single_file(npz_path):
     plt.errorbar(angle_bins / np.pi, mean_speed_per_angle, yerr=std_speed_per_angle, fmt='-o', capsize=3)
     plt.xlabel("Angle (π rad)")
     plt.ylabel("Mean Speed (Hz)")
-    plt.title("Mean Speed vs Angle")
+    plt.title("Speed vs Angle (Mean ± Std)")
     plt.tight_layout()
     plt.savefig(base + "_mean_speed_by_angle.png")
     plt.close()
 
-    # --- Segment-wise analysis (1s each) ---
+    # Segment-wise analysis
     n_segments = len(phase0) // SEGMENT_SIZE
     segment_profiles = []
 
@@ -117,14 +120,14 @@ def analyze_single_file(npz_path):
             min_points=MIN_POINTS,
         )
 
-        # Save per-segment speed matrix plot
+        # Plot per-segment speed matrix
         plt.figure(figsize=(10, 4))
         plt.imshow(seg_speed_matrix, aspect='auto', origin='lower', cmap='viridis',
                    extent=[0, seg_speed_matrix.shape[1], 0, 2])
         plt.colorbar(label="Speed (Hz)")
         plt.xlabel("Revolution Index")
         plt.ylabel("Angle (π rad)")
-        plt.title(f"Segment {i+1}: Speed Matrix")
+        plt.title(f"Segment {i+1}: Speed vs Angle and Revolution")
         plt.tight_layout()
         plt.savefig(base + f"_segment_{i+1:02d}_speed_matrix.png")
         plt.close()
@@ -142,10 +145,10 @@ def analyze_single_file(npz_path):
         plt.savefig(base + f"_segment_{i+1:02d}_angle_profile.png")
         plt.close()
 
-    # --- Combine segment profiles ---
+    # Combine and visualize segment profiles
     segment_profiles = np.array(segment_profiles)  # shape: [n_segments, n_angles]
 
-    # --- Plot all segment profiles together ---
+    # Plot all segment profiles together
     plt.figure()
     for i, profile in enumerate(segment_profiles):
         plt.plot(angle_bins / np.pi, profile, alpha=0.5, label=f"Segment {i+1}" if i < 10 else None)
@@ -158,7 +161,7 @@ def analyze_single_file(npz_path):
     plt.savefig(base + "_angle_profiles_per_segment.png")
     plt.close()
 
-    # --- Plot heatmap of all segment profiles ---
+    # Plot heatmap of all segment profiles
     plt.figure(figsize=(10, 6))
     plt.imshow(segment_profiles, aspect='auto', cmap='viridis',
                extent=[0, 2, 1, n_segments])
@@ -170,7 +173,7 @@ def analyze_single_file(npz_path):
     plt.savefig(base + "_segment_profile_heatmap.png")
     plt.close()
 
-    # --- Plot mean ± std band across segments ---
+    # Plot mean ± std band across segments
     mean_profile = np.nanmean(segment_profiles, axis=0)
     std_profile = np.nanstd(segment_profiles, axis=0)
 
@@ -182,20 +185,20 @@ def analyze_single_file(npz_path):
                      alpha=0.3, label="±1 std dev")
     plt.xlabel("Angle (π rad)")
     plt.ylabel("Speed (Hz)")
-    plt.title("Mean Angular Speed with Variability Band")
+    plt.title("Speed vs Angle (Mean ± Std Dev)")
     plt.legend()
     plt.tight_layout()
     plt.savefig(base + "_mean_speed_with_variability_band.png")
     plt.close()
 
-    # --- Plot variance across segments (for reproducibility) ---
+    # Plot variance across segments (Angle Stability)
     angle_variance = np.nanvar(segment_profiles, axis=0)
 
     plt.figure()
     plt.plot(angle_bins / np.pi, angle_variance, '-o')
     plt.xlabel("Angle (π rad)")
     plt.ylabel("Variance of Mean Speed Across Segments")
-    plt.title("Angle Stability Over Time (lower = more reproducible)")
+    plt.title("Angle Stability Over Time")
     plt.tight_layout()
     plt.savefig(base + "_angle_stability_variance.png")
     plt.close()

@@ -1,10 +1,13 @@
+"""
+Analyze rotational speed distributions at a fixed angular window using GMM fitting.
+Loads phase data, extracts per-revolution speeds, and fits Gaussian mixture models.
+"""
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
-from scipy.stats import gaussian_kde
 import os
 
-# --- Settings ---
+# Settings
 REFERENCE_NUM_POINTS = 200
 WINDOW_WIDTH_RAD = 0.2 * np.pi
 WINDOW_STRIDE_RAD = 0.05 * np.pi
@@ -14,13 +17,11 @@ LIMIT_SAMPLES = 1_500_000
 MIN_POINTS = 10
 MAX_SPEED_HZ = 600
 
-npz_path = "results/data/file/phase_data.npz"
+npz_path = "results_backup/2025.04.15 patricia/file/phase_data.npz"
 
 
 def compute_speed_vector(phase, phase_time, angle_center_rad, angle_width_rad=0.4, min_points=10):
-    """
-    Compute a 1D array of speeds at a specific angular window for each revolution.
-    """
+    """Compute a per-revolution speed vector at a fixed angular window."""
     rev_count = int(phase[-1] // (2 * np.pi))
     speed_vector = []
     fit_data = []
@@ -34,7 +35,7 @@ def compute_speed_vector(phase, phase_time, angle_center_rad, angle_width_rad=0.
             x = phase_time[mask]
             y = phase[mask]
             A = np.vstack([x, np.ones_like(x)]).T
-            slope, intercept = np.linalg.lstsq(A, y, rcond=None)[0]
+            slope, _ = np.linalg.lstsq(A, y, rcond=None)[0]
             speed = slope / (2 * np.pi)
             speed_vector.append(speed)
             fit_data.append((x, y, slope))
@@ -45,7 +46,7 @@ def compute_speed_vector(phase, phase_time, angle_center_rad, angle_width_rad=0.
 from sklearn.mixture import GaussianMixture
 
 def analyze_file_histograms(npz_path):
-    # --- Load and unwrap phase ---
+    # Load and unwrap phase
     data = np.load(npz_path)
     phase0 = data["phase0"][:LIMIT_SAMPLES]
     phase_time = data["phase_time"][:LIMIT_SAMPLES]
@@ -55,10 +56,10 @@ def analyze_file_histograms(npz_path):
     phase = np.unwrap(phase)
     phase = savgol_filter(phase, SMOOTH_WINDOW, SMOOTH_POLYORDER)
 
-    # --- Set single angular window ---
+    # Define angular window
     ANGLE_CENTER_RAD = 2 * np.pi
 
-    # --- Compute speed vector for this angular window ---
+    # Compute speed vector
     speeds, fit_data = compute_speed_vector(
         phase,
         phase_time,
@@ -72,7 +73,7 @@ def analyze_file_histograms(npz_path):
         print("No valid speeds found for the specified angular window.")
         return
 
-    # --- Plot phase data and fitted lines for first 10 fits ---
+    # Plot phase and fits
     for i, (x, y, slope) in enumerate(fit_data[:10]):
         plt.figure()
         plt.scatter(x, y, s=10, alpha=0.6, label="Phase data")
@@ -86,7 +87,7 @@ def analyze_file_histograms(npz_path):
         plt.savefig(base + f"_fit_phase_rev_{i+1}.png")
         plt.close()
 
-    # --- Fit GMMs and select best using BIC/AIC ---
+    # Fit GMM using AIC
     bic_scores = []
     aic_scores = []
     models = []
@@ -102,7 +103,7 @@ def analyze_file_histograms(npz_path):
     best_gmm = models[best_idx]
     n_best = best_idx + 1
 
-    # --- Plot histogram and GMM fit ---
+    # Plot histogram and GMM
     plt.figure()
     # Histogram
     plt.hist(speeds, bins=100, color='steelblue', alpha=0.6, density=True, label="Histogram")
@@ -125,7 +126,7 @@ def analyze_file_histograms(npz_path):
     plt.savefig(base + f"_hist_gmm_angle_{ANGLE_CENTER_RAD/np.pi:.2f}pi.png")
     plt.close()
 
-    print(f"✅ Histogram with GMM (n={n_best}) saved for angle {ANGLE_CENTER_RAD/np.pi:.2f}π rad.")
+    print(f"Histogram with GMM (n={n_best}) saved for angle {ANGLE_CENTER_RAD/np.pi:.2f}π rad.")
 
 
 if __name__ == "__main__":

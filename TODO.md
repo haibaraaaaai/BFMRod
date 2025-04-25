@@ -1,46 +1,36 @@
-Improvements:
-    Ideas: Quick X+iY Check in gui. Alert for cases where the speed is 2x but also the variance.
-    
-    QOL: Allow for a button of No update, where for a input start and end time, we do not update ref cycle, but need to make sure everything runs smoothly between and after this time, so phase assignment need to continue during update, new phase assignment after NO UPDATE (and during NO UPDATE) need to use the the last ref (computed or updated) to assign phase, need to check also if a computed ref is passed during this period, in which case we need to swap to the computed ref, this is for the extreme case of pauses in real rotation leading to noise completely taking over and make traj un-trackable.
-    Or just allow segmented update and fraction and alpha value and set update to the entire duration or longer
+# TODO
 
-    QOL: Allow for different update and fraction and alpha for each computed refs.
+## GUI
 
-    QOL: Try assigning index base with variance / std bias?
+### Core Ideas
+- Quick X+iY diagnostic viewer; alert when speed is doubled but variance is also high.
+- Pause detection.
+- Try additional smoothing on computed reference cycles.
+- Try Chi² step detection or other step/smoothing techniques on speed.
+- Try interpolating phase / projecting PCA onto reference cycle instead of using nearest neighbor.
+- Investigate anisotropy vs total intensity (normalize XYZ to [-1, 1]).
+- Explicit linear closure correction: morph trajectory so last point returns to first.
 
-    QOL: Run Segment-Based PCA?
+### Quality of Life
+- Allow different `update_interval`, `fraction`, and `alpha` for each computed reference.
+- Save `fraction`, `alpha`, and `update_interval` to JSON.
+- Try assigning index base using variance or std bias.
+- Use smaller smoothing for reference cycle updates.
+- Toggle speed calculation and `rev_window` input.
 
-    QOL: Preview More Segments?
+### Fixes
+- Investigate "jumping index" when adding computed ref between two existing refs.
+- Fix PCAViewer crash: cannot allocate 3.71 GiB for array (shape (497750000,)); needed for large datasets (not urgent).
 
-    QOL: Change to a smaller smooth for updates.    
+### Advanced Ideas
+- Dynamic threshold trigger for reference cycle update:
+  - Monitor misalignment between reference cycle and PCA trajectory.
+  - If misalignment exceeds ¼ of peak distance, trigger update `END_OF_CYCLE_LIMIT` early.
+  - If not fixed, flag and pause, request manual reference input.
+  - Resume processing from new manual ref using cache to skip unchanged segments.
 
-    QOL: Also save in json fraction, alpha, update interval
+## Tools
 
-    Fixes: Cache jumping index? Weird stuff from adding computed ref bewteen 2 computed refs.
-
-    Fixes: PCAViewer cannot allocate 3.71 GiB for an array with shape (497750000,) and data type float64, so need a fix for large data sets, not urgent, but will need later.
-
-    Ideas: Try Chi2 step finding or other step finding / smoothing techinque on speed.
-
-    Ideas: Investigate anisotropy vs total intensity (normalize XYZ to [-1, 1]).
-
-    Ideas: Pause detection.
-
-    Ideas: Optimize fraction and alpha values.
-
-    Ideas: Toggle speed calculation and rev_window input.
-
-    Ideas: Dynymic threshold trigger for ref cycle update (even manual input trigger) Basically use the same comparison plotted in pca comparison viewer and set it so if peaks in ref misalign with peaks in pca by a factor of 1/4 of the distance from this pca peak to the next or something then we trigger a update perhaps END_OF_CYCLE_LIMIT size before this happens, if still not fixed we flag it and pause later computation and ask for a manual input of ref, then we start from that again (maybe with the help of cache).
-
-    Ideas: Try additional smoothing on computed ref cycles.
-
-    Ideas: Explicit linear correction to enforce closure, by progressively "morphing" the trajectory to bring the last point back to the first.
-
-
-Fix speed per angle and speed per angle smoothing
-
-try interpolate phase? or projecting the pca on ref cycle instead of finding nearest point for smoother data.
-
-Test linear fit with plots to see if fit make sense.
-
-Test low / no induction (hope for plasmid leak) to see if the peaks reduce to only 1 in histograms.
+### Ideas
+- Plot speed from multiple angular regions and compare trends to average speed.
+  - Goal: separate angular variance from temporal variance.
