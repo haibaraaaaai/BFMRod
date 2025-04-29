@@ -40,3 +40,24 @@
 ### Ideas
 - Plot speed from multiple angular regions and compare trends to average speed.
   - Goal: separate angular variance from temporal variance.
+
+
+angle polar/linear moive? for shape of bearing.
+try different anlge bin sizess
+
+average over entire traces 26 peaks?
+
+bio archive paper
+
+intermediate averaging see changing of the peaks?
+
+try 100 angles? 
+fourier transform of the distribution give periodicity with 26
+
+normalize to average for the polar plot to remove pmf stuff?
+what happens when a speed is skipped because less than 2 points are in that range?
+does not make sense to even try 100 steps for 200 phase points. 
+
+pca on angluar speeds?
+
+need to care for search range in near neighbour search if we increase ref number

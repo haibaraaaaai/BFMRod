@@ -88,6 +88,9 @@ class TDMSViewer(QMainWindow):
         self.end_time_input = self._add_line_edit("End Time (s)", 100)
         self.end_time_label = self._add_label_inline(f"Max: {self.smoothed_timestamps[-1]:.3f}s")
 
+        self.pca_start_time_input = self._add_line_edit("PCA Start (s)", 100, default_text=f"{self.smoothed_timestamps[0]:.3f}")
+        self.pca_end_time_input = self._add_line_edit("PCA End (s)", 100, default_text=f"{self.smoothed_timestamps[-1]:.3f}")
+
         self.apply_button = QPushButton("Apply New Window")
         self.apply_button.clicked.connect(self.apply_manual_window)
         self.control_panel.addWidget(self.apply_button)
@@ -207,13 +210,24 @@ class TDMSViewer(QMainWindow):
 
     def launch_pca_viewer(self):
         try:
+            start_time = float(self.pca_start_time_input.text())
+            end_time = float(self.pca_end_time_input.text())
+
+            start_time = max(start_time, self.smoothed_timestamps[0])
+            end_time = min(end_time, self.smoothed_timestamps[-1])
+            start_index = np.searchsorted(self.smoothed_timestamps, start_time, side='left')
+            end_index = np.searchsorted(self.smoothed_timestamps, end_time, side='right')
+
+            segment_data = self.smoothed_data[start_index:end_index]
+            segment_timestamps = self.smoothed_timestamps[start_index:end_index]
+
             tdms_filename = os.path.splitext(os.path.basename(self.last_file_path))[0]
             parent_folder = os.path.basename(os.path.dirname(self.last_file_path))
             file_basename = os.path.join(parent_folder, tdms_filename)
 
             self.pca_viewer = PCA3DViewer(
-                data=self.data,
-                timestamps=self.timestamps,
+                data=segment_data,
+                timestamps=segment_timestamps,
                 file_basename=file_basename
             )
             self.pca_viewer.show()
