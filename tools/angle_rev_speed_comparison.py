@@ -14,7 +14,7 @@ MIN_POINTS = 10
 PLOT_SMOOTH_WINDOW = 9
 PLOT_SMOOTH_POLYORDER = 2
 
-npz_path = "results_backup/2025.04.16 patricia/file8/phase_data.npz"
+npz_path = "results_backup/2025.04.15 patricia/files1/phase_data.npz"
 
 # --- Functions ---
 def compute_revolution_speed(phase, phase_time):
