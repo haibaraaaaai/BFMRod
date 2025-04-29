@@ -1,5 +1,9 @@
 # TODO
 
+## Ideas
+- Testing the detached, attached off, attached on three state model by looking at the speed trace variance within a step and variance between steps.
+- Checking for bearing noise and locked speed (still has a stator but no longer rotate) by comparing the signal difference just when it stops / after a few seconds.
+
 ## GUI
 
 ### Core Ideas
@@ -28,6 +32,8 @@
   - If misalignment exceeds ¼ of peak distance, trigger update `END_OF_CYCLE_LIMIT` early.
   - If not fixed, flag and pause, request manual reference input.
   - Resume processing from new manual ref using cache to skip unchanged segments.
+
+- Segmented PCA.
 
 ## Tools
 
