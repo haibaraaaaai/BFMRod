@@ -60,4 +60,18 @@ does not make sense to even try 100 steps for 200 phase points.
 
 pca on angluar speeds?
 
-need to care for search range in near neighbour search if we increase ref number
+
+check variance difference from multi stator to single stator
+and from na and proton type
+from just when speed hit zero and a while afterwards
+
+
+degasing buffer to remove oxygen with vacuum chamber
+or with syringe to pull out air
+SO3 (2-)
+3 state literature
+
+use angles with best speeds maybe bearing dynamics will be seen there and can be exculded from residual (stator) dynamics
+
+
+https://github.com/navishwadhwa/multi-state-remodeling
