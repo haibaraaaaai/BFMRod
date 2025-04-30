@@ -18,7 +18,7 @@ END_OF_CYCLE_LIMIT = 100_000         # Max search range for cycle end after star
 REFERENCE_NUM_POINTS = 200           # Number of interpolated points in reference cycle
 
 # ─── Phase Tracking ───────────────────────────────────────────────────
-CONTINUITY_CONSTRAINT = REFERENCE_NUM_POINTS // 10  # Neighborhood size for phase continuity search
+CONTINUITY_CONSTRAINT = REFERENCE_NUM_POINTS // 2  # Neighborhood size for phase continuity search. Set to REF_NUM_POINTS // 10 originally. REFERENCE_NUM_POINTS // 2 is basically removes it.
 
 # ─── For PCA 3D Viewer ───────────────────────────────────────────────────
 DEFAULT_PCA_SEGMENT_DURATION = 1
