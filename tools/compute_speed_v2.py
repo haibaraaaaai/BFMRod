@@ -117,5 +117,5 @@ def analyze_file(npz_path):
         print(f"Failed to analyze {npz_path}: {e}")
 
 if __name__ == "__main__":
-    path = "results_backup/2025.02.23 daping/file2/phase_data.npz"
+    path = "results_backup/2025.04.24 patricia/file/phase_data.npz"
     analyze_file(path)
