@@ -90,5 +90,5 @@ def process_npz(npz_path, threshold):
 
 
 if __name__ == "__main__":
-    path = "results_backup/2025.02.23 daping/file2/phase_data_speeds.npz"
+    path = "results_backup/2025.04.24 patricia/file/phase_data_speeds.npz"
     process_npz(path, threshold=10.0)

@@ -1,5 +1,8 @@
-2025.02.23 daping
+2025.02.23 daping ox
 file2: Very clear and consistent PCA but with edge cases that might distort phase. Better resolved by relaxing continuity constraint but might need to pick better angles for speed calculation. Which might also be a problem with multi ref cycles.
+
+2025.04.24 daping
+file: Need to check if this or which is the one with oxygen scavenger. Spikes in phase need to smooth out.
 
 2025.04.25 daping
 file: Terrible PCA, might need to increase laser intensity.
