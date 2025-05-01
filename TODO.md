@@ -75,3 +75,12 @@ use angles with best speeds maybe bearing dynamics will be seen there and can be
 
 
 https://github.com/navishwadhwa/multi-state-remodeling
+
+
+Read A multi-state dynamic process confers mechano-adaptation to a biological nanomachine.
+Get data with good steps, multi stators, and no laser damage.
+Compare.
+
+Prep no oxygen samples.
+first try only glucose.
+then try with oxygen removed solution.
