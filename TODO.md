@@ -84,3 +84,6 @@ Compare.
 Prep no oxygen samples.
 first try only glucose.
 then try with oxygen removed solution.
+
+fix display ref cycle
+resize pca normailzed signal?
