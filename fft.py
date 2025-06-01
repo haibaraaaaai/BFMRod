@@ -71,8 +71,7 @@ def get_int_av(data, res=5, th=10, limit_ratio=0.99):
     return step_fitted
 
 # === Parameters ===
-data_path = "data/2025.05.23 patricia ox"
-tdms_filename = "file.tdms"
+data_path = "data/2025.05.20 patricia ox"
 decimation_factor = 100
 fs_original = 250000
 fs = fs_original // decimation_factor
@@ -82,81 +81,80 @@ overlap = 50
 nperseg = 100
 nfft = 400
 
-output_dir = os.path.join(data_path, "results", "stepfit_speed_trace")
-os.makedirs(output_dir, exist_ok=True)
-
-# === Load TDMS and Compute Itot ===
-tdms_file = TdmsFile.read(os.path.join(data_path, tdms_filename))
-group_name = tdms_file.groups()[0].name
-group = tdms_file[group_name]
-
 channel_map = {
     "PXI1Slot2/ai0": "C90",
     "PXI1Slot2/ai1": "C45",
     "PXI1Slot2/ai2": "C135",
     "PXI1Slot2/ai3": "C0"
 }
-data = {}
-for tdms_name, alias in channel_map.items():
-    signal = group[tdms_name].data
-    signal_dec = decimate(signal, decimation_factor, ftype='fir')
-    data[alias] = signal_dec
 
-timestamps = group[list(channel_map.keys())[0]].time_track()
-timestamps_dec = decimate(timestamps, decimation_factor, ftype='fir')
-data["Timestamp (s)"] = timestamps_dec
+# === Process all .tdms files in data_path ===
+for tdms_filename in sorted(f for f in os.listdir(data_path) if f.endswith(".tdms")):
+    print(f"📂 Processing: {tdms_filename}")
+    output_dir = os.path.join(data_path, os.path.splitext(tdms_filename)[0], "stepfit_speed_trace")
+    os.makedirs(output_dir, exist_ok=True)
 
-df = pd.DataFrame(data)
-df["Itot"] = df[["C0", "C45", "C90", "C135"]].sum(axis=1)
+    tdms_file = TdmsFile.read(os.path.join(data_path, tdms_filename))
+    group_name = tdms_file.groups()[0].name
+    group = tdms_file[group_name]
 
-# === Segment-wise FFT to estimate speed ===
-segment_indices = list(range(0, (len(df) - window_size) // overlap))
-segment_times = []
-speeds = []
+    data = {}
+    for tdms_name, alias in channel_map.items():
+        signal = group[tdms_name].data
+        signal_dec = decimate(signal, decimation_factor, ftype='fir')
+        data[alias] = signal_dec
 
-for idx in segment_indices:
-    start = idx * overlap
-    end = start + window_size
-    if end > len(df):
-        continue
+    timestamps = group[list(channel_map.keys())[0]].time_track()
+    timestamps_dec = decimate(timestamps, decimation_factor, ftype='fir')
+    data["Timestamp (s)"] = timestamps_dec
 
-    segment = df["Itot"].values[start:end]
-    time_segment = df["Timestamp (s)"].values[start:end]
-    mid_time = np.mean(time_segment)
+    df = pd.DataFrame(data)
+    df["Itot"] = df[["C0", "C45", "C90", "C135"]].sum(axis=1)
 
-    freqs, power = welch(segment, fs=fs, nperseg=nperseg, nfft=nfft)
-    dominant_freq = freqs[np.argmax(power)]
+    segment_indices = list(range(0, (len(df) - window_size) // overlap))
+    segment_times = []
+    speeds = []
 
-    segment_times.append(mid_time)
-    speeds.append(dominant_freq)
+    for idx in segment_indices:
+        start = idx * overlap
+        end = start + window_size
+        if end > len(df):
+            continue
 
-# === Smooth and Step Fit ===
-smoothed_speeds = savgol_filter(speeds, window_length=51, polyorder=2)
-step_fitted = get_int_av(smoothed_speeds, res=5, th=10)
+        segment = df["Itot"].values[start:end]
+        time_segment = df["Timestamp (s)"].values[start:end]
+        mid_time = np.mean(time_segment)
 
-# === Plot ===
-plt.figure(figsize=(10, 5))
-plt.plot(segment_times, speeds, label="Raw Speed", alpha=0.3, marker='o', markersize=3)
-plt.plot(segment_times, smoothed_speeds, label="Savitzky-Golay", linewidth=2, color='orange')
-plt.plot(segment_times, step_fitted, label="Step-Fitted", linewidth=2, linestyle='--', color='green')
-plt.xlabel("Time (s)")
-plt.ylabel("Speed (Hz)")
-plt.title("Step-Fitted Speed Trace from Itot")
-plt.grid(True)
-plt.legend()
-plt.tight_layout()
+        freqs, power = welch(segment, fs=fs, nperseg=nperseg, nfft=nfft)
+        dominant_freq = freqs[np.argmax(power)]
 
-plot_path = os.path.join(output_dir, "itot_speed_trace_stepfit.png")
-plt.savefig(plot_path, dpi=300)
-plt.close()
-print(f"✅ Step-fitted speed plot saved: {plot_path}")
+        segment_times.append(mid_time)
+        speeds.append(dominant_freq)
 
-# === Save CSV ===
-df_speed = pd.DataFrame({
-    "Time (s)": segment_times,
-    "Speed (Hz)": speeds,
-    "Smoothed Speed (Hz)": smoothed_speeds,
-    "Step-Fitted Speed (Hz)": step_fitted
-})
-df_speed.to_csv(os.path.join(output_dir, "itot_speed_trace_stepfit.csv"), index=False)
-print("✅ Speed data saved to CSV.")
+    smoothed_speeds = savgol_filter(speeds, window_length=51, polyorder=2)
+    step_fitted = get_int_av(smoothed_speeds, res=5, th=10)
+
+    plt.figure(figsize=(10, 5))
+    plt.plot(segment_times, speeds, label="Raw Speed", alpha=0.3, marker='o', markersize=3)
+    plt.plot(segment_times, smoothed_speeds, label="Savitzky-Golay", linewidth=2, color='orange')
+    plt.plot(segment_times, step_fitted, label="Step-Fitted", linewidth=2, linestyle='--', color='green')
+    plt.xlabel("Time (s)")
+    plt.ylabel("Speed (Hz)")
+    plt.title("Step-Fitted Speed Trace from Itot")
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+
+    plot_path = os.path.join(output_dir, "itot_speed_trace_stepfit.png")
+    plt.savefig(plot_path, dpi=300)
+    plt.close()
+    print(f"✅ Step-fitted speed plot saved: {plot_path}")
+
+    df_speed = pd.DataFrame({
+        "Time (s)": segment_times,
+        "Speed (Hz)": speeds,
+        "Smoothed Speed (Hz)": smoothed_speeds,
+        "Step-Fitted Speed (Hz)": step_fitted
+    })
+    df_speed.to_csv(os.path.join(output_dir, "itot_speed_trace_stepfit.csv"), index=False)
+    print("✅ Speed data saved to CSV.\n")
