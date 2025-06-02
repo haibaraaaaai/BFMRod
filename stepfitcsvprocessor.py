@@ -44,5 +44,5 @@ def process_folder(root_folder):
                     print(f"❌ Error processing {fullpath}: {e}")
 
 if __name__ == "__main__":
-    base_dir = "data/2025.05.23 patricia ox"
+    base_dir = "results_backup/2025.05.20 patricia ox"
     process_folder(base_dir)

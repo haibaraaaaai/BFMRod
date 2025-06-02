@@ -2,9 +2,8 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import numpy as np
 
-root_dir = "data/2025.05.23 patricia ox"
+root_dir = "speeds_80mM"
 step_sizes = []
 file_labels = []
 

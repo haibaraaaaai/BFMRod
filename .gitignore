@@ -4,3 +4,8 @@ results/
 .venv/
 src/last_file.txt
 results_backup/
+stepsize/
+speeds_0/
+speeds_80mM/
+speeds_ficol/
+speeds_transition/
