@@ -87,3 +87,75 @@ then try with oxygen removed solution.
 
 fix display ref cycle
 resize pca normailzed signal?
+
+
+80 vs 0 speed comparison during exchange? exchange behvaiour
+dwell time comparison
+compare (equilibrium 80mM) with 80 mM at buffer exchange
+
+
+1. Compare step statistics across SMF conditions
+
+Now that buffer states are labeled:
+	•	Split each buffer-exchange trace into segments based on your known change times.
+	•	For each segment, extract:
+	•	Mean dwell time
+	•	Mean step size
+	•	Step count
+	•	Group segments into:
+	•	80 mM
+	•	0 mM (low SMF)
+	•	Transition (exclude or separately track)
+	•	📊 Plot bar charts or box plots:
+	•	One plot for dwell time, one for step size
+	•	Grouped by SMF condition
+
+👉 This gives a clean answer to: “How does SMF affect stator turnover behavior?”
+
+⸻
+
+2. Repeat for Ficol vs no Ficol
+
+Now that you have Ficol traces, do the same per-segment analysis, but group by:
+	•	Ficol (high load)
+	•	Normal (low load)
+
+This addresses: “How does load affect step dynamics, at a given SMF?”
+
+You can even do 2×2 grouping:
+	•	80 mM + low load
+	•	0 mM + low load
+	•	80 mM + Ficol
+	•	0 mM + Ficol (if enough data)
+
+⸻
+
+3. Step size distribution clustering
+
+Use t-SNE or PCA again, but this time:
+	•	Label each point by SMF condition and/or Ficol
+	•	See if step shape or size profile separates meaningfully
+
+This avoids relying only on dwell time means.
+
+⸻
+
+4. Highlight individual examples
+
+From the 7 full-paired traces (80 mM + transitions), pick 1–2 clear ones and:
+	•	Plot annotated step trace (like you already did)
+	•	Highlight that step size drops / dwell time rises with 80→0 switch
+	•	Use arrows and buffer labels
+
+This is poster material.
+
+⸻
+
+Bonus
+
+Later: Use speed histograms or kernel density estimates for each condition, to see if speed states shift under different SMF.
+
+only the uniformly going down parts fit the step finding thing?
+also i guess with koff we should only focus on the offs?
+cells have no brain!
+is it micro sensing or when torque is low, high k off rate
