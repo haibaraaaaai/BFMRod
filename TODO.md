@@ -159,3 +159,5 @@ only the uniformly going down parts fit the step finding thing?
 also i guess with koff we should only focus on the offs?
 cells have no brain!
 is it micro sensing or when torque is low, high k off rate
+
+Try KDE for step fitting

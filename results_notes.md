@@ -15,7 +15,7 @@ file: OK PCA, need more ref cycles, not sure what it is.
 fi: 8778 9467
 
 2025.05.20 patricia ox
-file: 80mM
+file: 80mM (next file following a pure 80mM 5min recording will be on the same cell)
 file1: 180:80-0; 250:0-0; 420(430?):0-80; 600:80-80
 file2: discard
 file3: 80mM
@@ -34,7 +34,7 @@ files2: 80mM
 files3: 60:80-0; 360:0-80; 570:80-0; 810:0-80
 files4: 80mM
 files5: 90:80-0; 450:0-80; 660:80-0; 900(910?):0-80; 1050:80-0; 1230:0-80
-files6: 90:80-0; 150:0-0; 360: 0-80
+files6: 90:80-0; 150:0-0; 360: 0-80 
 files7: discard, no scavenger
 files8: discard, no scavenger
 files9: 80mM Na + 10% Ficol
@@ -43,3 +43,12 @@ files11: discard
 files12: 80mM no Ficol? But Ficol could still be present? (I guess it'd be low Ficol, just like it's low Na at 0mM)
 files13: 60: 80mM + 10% Ficol; 365: 80mM + no Ficol
 file: 60: 80mM + 10% Ficol; 570: Mixed?
+
+2025.06.04
+Ficol
+files9: 80mM no Ficol PCA really good
+files10: discard
+files11: 60: 80 no Ficol-80 Ficol; 450: 80 Ficol-80 no Ficol; 790: 80 no Ficol-0 no Ficol
+
+2025.06.05
+files1: Periods of zero speeds, but also times when it goes back to 50-100 Hz even after 0mM w/o scavenger

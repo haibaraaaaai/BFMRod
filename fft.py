@@ -71,7 +71,7 @@ def get_int_av(data, res=5, th=10, limit_ratio=0.99):
     return step_fitted
 
 # === Parameters ===
-data_path = "data/2025.05.20 patricia ox"
+data_path = "data/2025.06.05 patricia 80ox"
 decimation_factor = 100
 fs_original = 250000
 fs = fs_original // decimation_factor
