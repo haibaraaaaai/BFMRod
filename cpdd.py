@@ -1,6 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.neighbors import KernelDensity
 import ruptures as rpt
 from scipy.signal import savgol_filter, decimate, find_peaks, welch
 from scipy.stats import gaussian_kde
@@ -9,7 +8,7 @@ import os
 import pandas as pd
 
 # Parameters
-data_path = "data/2025.05.23 patricia ox"
+data_path = "data/20250609"
 decimation_factor = 100
 fs_original = 250000
 fs = fs_original // decimation_factor
@@ -25,7 +24,7 @@ channel_map = {
     "PXI1Slot2/ai3": "C0"
 }
 
-tdms_filename = "files3.tdms"  # Replace with actual file name
+tdms_filename = "files8.tdms"
 print(f"📂 Processing: {tdms_filename}")
 
 output_dir = os.path.join(data_path, os.path.splitext(tdms_filename)[0], "stepfit_speed_trace")
@@ -245,6 +244,7 @@ plt.title("Sliding Window KDE Peak Trajectories")
 plt.tight_layout()
 plt.show()
 
+
 # Comparison plot with global vs segment-wise step fitting
 plt.figure(figsize=(12, 5))
 plt.plot(t, s, alpha=0.2, label="Raw Speed")
@@ -258,3 +258,63 @@ plt.title("Global vs Windowed Step-Fitted Traces")
 plt.legend()
 plt.tight_layout()
 plt.show()
+
+
+# --- Step 1: Use KernelCPD + get_ruptures_mm logic on FFT speed trace ---
+penalty = 70
+min_deg_size = 1.0  # threshold in speed units (Hz here)
+model = rpt.KernelCPD(kernel="linear").fit(s_smooth)
+xbound = model.predict(pen=penalty)
+xbound = [0] + xbound
+
+m = []
+indli = []
+for i in range(len(xbound)-1):
+    start = xbound[i]
+    end = xbound[i+1]
+    seg = s_smooth[start:end]
+    avg = np.mean(seg)
+    m.append(avg)
+    indli.append(avg)
+m = np.array(m)
+indli = np.array(indli)
+
+# --- Step 2: Derive KDE peaks as stable state definitions ---
+kde = gaussian_kde(s_smooth, bw_method=0.03)
+s_vals = np.linspace(s_smooth.min(), s_smooth.max(), 2000)
+pdf = kde(s_vals)
+prominence = np.max(pdf) * 0.01
+peaks, _ = find_peaks(pdf, prominence=prominence)
+states = s_vals[peaks]
+
+# Map each segment mean to the closest KDE-defined state
+indlih = np.array([np.argmin(np.abs(states - v)) for v in m])
+
+# --- Step 3: Transition matrix analysis (compute_transitions logic) ---
+transitionarh = {}
+timessh = {}
+rawtrh = {}
+meanzh = {}
+durationsh = {}
+
+for i in range(len(indlih)-1):
+    fr = indlih[i]
+    to = indlih[i+1]
+    key = (fr, to)
+    if key not in transitionarh:
+        transitionarh[key] = []
+        timessh[key] = []
+        rawtrh[key] = []
+        meanzh[key] = []
+        durationsh[key] = []
+
+    transitionarh[key].append(t[xbound[i+1]])
+    timessh[key].append(t[xbound[i+1]] - t[xbound[i]])
+    rawtrh[key].append(s[xbound[i]:xbound[i+1]])
+    meanzh[key].append(np.mean(s[xbound[i]:xbound[i+1]]))
+    durationsh[key].append(t[xbound[i+1]] - t[xbound[i]])
+
+# Print summary of transitions
+print("Detected transitions between KDE states:")
+for key in sorted(transitionarh.keys()):
+    print(f"{key}: {len(transitionarh[key])} transitions, avg dwell {np.mean(durationsh[key]):.2f}s")
