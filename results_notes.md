@@ -1,3 +1,10 @@
+2024.10.17 daping ox
+files are too big for PCA program currently. Try FFT.
+file
+file1
+file2
+file3
+
 2025.02.23 daping ox
 file2: Very clear and consistent PCA but with edge cases that might distort phase. Better resolved by relaxing continuity constraint but might need to pick better angles for speed calculation. Which might also be a problem with multi ref cycles.
 
