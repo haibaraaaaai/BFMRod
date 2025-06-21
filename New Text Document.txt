@@ -1,0 +1,5 @@
+FCCP disrupt sodium motive force. makes stator go away but not ususally come back. They do not die, because they still react to changing buffer.
+
+Transient stator recruitment when flow is introduced. Has a response time of 10-20 seconds. Need to figure out if any of the spikes are flow or buffer change.
+
+Stator added files(13th) after a while because adding IPTG

@@ -161,3 +161,5 @@ cells have no brain!
 is it micro sensing or when torque is low, high k off rate
 
 Try KDE for step fitting
+
+for ref  update maybe try smaller smoothign?
