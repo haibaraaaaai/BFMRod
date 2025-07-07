@@ -70,8 +70,8 @@ def get_int_av(data, res=5, th=10, limit_ratio=0.99):
     return step_fitted
 
 # === Parameters ===
-csv_path = "data/2025.06.09 patricia 80ox/files10/fft_speed_zeroed_X+iY_raw.csv"
-savgol_window = 51  # must be odd
+csv_path = "data/2025.06.10 patricia 80ox/files5/fft_speed_zeroed_C0_raw.csv"
+savgol_window = 5  # must be odd
 polyorder = 2
 
 # === Load and process CSV ===
