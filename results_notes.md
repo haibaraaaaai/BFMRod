@@ -59,3 +59,8 @@ files11: 60: 80 no Ficol-80 Ficol; 450: 80 Ficol-80 no Ficol; 790: 80 no Ficol-0
 
 2025.06.05
 files1: Periods of zero speeds, but also times when it goes back to 50-100 Hz even after 0mM w/o scavenger
+
+General observations
+FCCP disrupts sodium motive force. Makes stator go away but not usually come back. Cells do not die, because they still react to changing buffer.
+Transient stator recruitment when flow is introduced. Has a response time of 10-20 seconds. Need to figure out if any of the spikes are flow or buffer change.
+Stator added files (13th) after a while because adding IPTG.
